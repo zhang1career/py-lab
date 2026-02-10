@@ -27,6 +27,7 @@ from musician.trajectory_to_motive import trajectory_to_motive
 from musician.composer import compose
 from musician.player import play_score
 from musician.export_midi import export_score_to_midi
+from musician.export_ts_lib import export_ts_lib
 
 
 # -----------------------------------------------------------------------------
@@ -88,6 +89,7 @@ PANEL_GROUPS = [
         "作曲器",
         [
             ("COMPOSE_DEFAULT_BPM", "int", 120, "默认 BPM", 40, 240),
+            ("COMPOSE_ADD_ACCOMPANIMENT", "bool", True, "添加伴奏声部"),
             ("COMPOSE_ACCOMPANIMENT_VELOCITY", "float", 0.35, "伴奏力度 [0,1]", 0.0, 1.0),
             ("COMPOSE_CHORD_DURATION", "float", 2.0, "每个和弦持续拍数", 0.5, 4.0),
             ("COMPOSE_ACCOMPANIMENT_STYLE", "choice", "block", "伴奏形态", "block", "arpeggiated", "rhythm_pattern"),
@@ -146,6 +148,18 @@ _CONF_KEYS = [key for _title, params in PANEL_GROUPS for key, *_ in params]
 # 两列布局：左列组数（按音乐理论：左=素材/动机，右=编曲/播放/演示）
 # 左列：调性、动机输出、轨迹→动机(权重)、轨迹→动机(扰动)；右列：作曲器、播放器、演示
 _PANEL_LEFT_COLUMN_GROUPS = 4
+
+# 伴奏开关关闭时，以下参数控件应设为不可编辑
+ACCOMPANIMENT_PARAM_KEYS = frozenset({
+    "COMPOSE_ACCOMPANIMENT_VELOCITY",
+    "COMPOSE_CHORD_DURATION",
+    "COMPOSE_ACCOMPANIMENT_STYLE",
+})
+# 对位开关关闭时，以下参数控件应设为不可编辑
+COUNTERPOINT_PARAM_KEYS = frozenset({
+    "COMPOSE_COUNTERPOINT_VELOCITY_RATIO",
+    "COMPOSE_COUNTERPOINT_STYLE",
+})
 
 
 def _get_panel_values(vars_map: dict, kinds: dict) -> dict:
@@ -319,7 +333,7 @@ motive = [Note(pitch=max(0, min(127, n.pitch + transpose)), duration=n.duration,
 score = compose(
     motive,
     bpm=bpm,
-    add_accompaniment=True,
+    add_accompaniment=getattr(conf, "COMPOSE_ADD_ACCOMPANIMENT", True),
     accompaniment_style=getattr(conf, "COMPOSE_ACCOMPANIMENT_STYLE", "block"),
     add_counterpoint=getattr(conf, "COMPOSE_ADD_COUNTERPOINT", False),
     counterpoint_style=getattr(conf, "COMPOSE_COUNTERPOINT_STYLE", "parallel_3rd"),
@@ -376,15 +390,27 @@ def make_demo_trajectory(length: int) -> list[TrajectoryPoint]:
     return points
 
 
-def _build_group(parent: tk.Widget, title: str, params: list, vars_map: dict, kinds: dict) -> None:
-    """在 parent 下建一个分组（LabelFrame）及参数控件。"""
+def _build_group(
+    parent: tk.Widget,
+    title: str,
+    params: list,
+    vars_map: dict,
+    kinds: dict,
+    dependent_widgets: Optional[dict] = None,
+) -> None:
+    """在 parent 下建一个分组（LabelFrame）及参数控件。
+    dependent_widgets: 若提供，则对伴奏/对位相关 key 记录其可编辑控件，用于随开关启用/禁用。
+    """
     frame = ttk.LabelFrame(parent, text=title, padding=6)
     frame.pack(fill=tk.X, padx=4, pady=4)
+    if dependent_widgets is None:
+        dependent_widgets = {}
     for key, kind, default, hint, *rest in params:
         kinds[key] = kind
         row = ttk.Frame(frame)
         row.pack(fill=tk.X, pady=2)
         ttk.Label(row, text=key, width=32, anchor=tk.W).pack(side=tk.LEFT, padx=(0, 4))
+        row_widgets: list = []
         if kind == "bool":
             var = tk.BooleanVar(value=getattr(conf, key, default))
             cb = ttk.Checkbutton(row, variable=var, text="开启")
@@ -398,7 +424,9 @@ def _build_group(parent: tk.Widget, title: str, params: list, vars_map: dict, ki
             var = tk.StringVar(value=current)
             # 用单选按钮替代下拉框，避免 macOS 上 OptionMenu/Combobox 选中后不显示文字的问题
             for opt in options:
-                ttk.Radiobutton(row, variable=var, value=opt, text=opt).pack(side=tk.LEFT, padx=(0, 8))
+                rb = ttk.Radiobutton(row, variable=var, value=opt, text=opt)
+                rb.pack(side=tk.LEFT, padx=(0, 8))
+                row_widgets.append(rb)
             vars_map[key] = var
         elif kind == "int":
             lo, hi = rest[0], rest[1]
@@ -406,13 +434,39 @@ def _build_group(parent: tk.Widget, title: str, params: list, vars_map: dict, ki
             sb = ttk.Spinbox(row, from_=lo, to=hi, width=8, textvariable=var)
             sb.pack(side=tk.LEFT)
             vars_map[key] = var
+            row_widgets.append(sb)
         else:
             lo, hi = rest[0], rest[1]
             var = tk.StringVar(value=str(getattr(conf, key, default)))
             sb = ttk.Spinbox(row, from_=lo, to=hi, width=8, textvariable=var, increment=0.05 if (hi - lo) <= 2 else 1.0)
             sb.pack(side=tk.LEFT)
             vars_map[key] = var
+            row_widgets.append(sb)
+        if row_widgets and (key in ACCOMPANIMENT_PARAM_KEYS or key in COUNTERPOINT_PARAM_KEYS):
+            dependent_widgets.setdefault(key, []).extend(row_widgets)
         ttk.Label(row, text=hint, foreground="gray").pack(side=tk.LEFT, padx=8)
+
+
+def _update_dependent_states(vars_map: dict, dependent_widgets: dict) -> None:
+    """根据伴奏/对位开关更新相关参数控件的可编辑状态。"""
+    acc_on = vars_map.get("COMPOSE_ADD_ACCOMPANIMENT")
+    cpt_on = vars_map.get("COMPOSE_ADD_COUNTERPOINT")
+    acc_on = acc_on.get() if acc_on is not None else True
+    cpt_on = cpt_on.get() if cpt_on is not None else False
+    for key in ACCOMPANIMENT_PARAM_KEYS:
+        state = "normal" if acc_on else "disabled"
+        for w in dependent_widgets.get(key, []):
+            try:
+                w.configure(state=state)
+            except tk.TclError:
+                pass
+    for key in COUNTERPOINT_PARAM_KEYS:
+        state = "normal" if cpt_on else "disabled"
+        for w in dependent_widgets.get(key, []):
+            try:
+                w.configure(state=state)
+            except tk.TclError:
+                pass
 
 
 def main() -> None:
@@ -450,9 +504,23 @@ def main() -> None:
 
     vars_map: dict = {}
     kinds: dict = {}
+    dependent_widgets: dict = {}
     for i, (title, params) in enumerate(PANEL_GROUPS):
         parent = left_col if i < _PANEL_LEFT_COLUMN_GROUPS else right_col
-        _build_group(parent, title, params, vars_map, kinds)
+        _build_group(parent, title, params, vars_map, kinds, dependent_widgets)
+
+    # 伴奏/对位开关控制对应参数的可编辑状态
+    _update_dependent_states(vars_map, dependent_widgets)
+
+    def _on_accomp_or_counterpoint_toggle(*_args) -> None:
+        _update_dependent_states(vars_map, dependent_widgets)
+
+    vars_map.get("COMPOSE_ADD_ACCOMPANIMENT") and vars_map["COMPOSE_ADD_ACCOMPANIMENT"].trace_add(
+        "write", _on_accomp_or_counterpoint_toggle
+    )
+    vars_map.get("COMPOSE_ADD_COUNTERPOINT") and vars_map["COMPOSE_ADD_COUNTERPOINT"].trace_add(
+        "write", _on_accomp_or_counterpoint_toggle
+    )
 
     # 面板参数防抖写回 conf.py
     _conf_py_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "conf.py")
@@ -532,6 +600,13 @@ def main() -> None:
         _apply_panel_to_conf(vars_map, kinds)
         threading.Thread(target=_generate_and_play, args=(root, status_var), daemon=True).start()
 
+    def on_export_ts_lib() -> None:
+        try:
+            path = export_ts_lib()
+            status_var.set(f"已导出 TS 库: {path}")
+        except Exception as e:
+            status_var.set(f"导出 TS 库失败: {e}")
+
     def on_export_midi() -> None:
         def _do_export() -> None:
             root.after(0, lambda: status_var.set("正在生成并导出 MIDI…"))
@@ -556,7 +631,7 @@ def main() -> None:
                 score = compose(
                     motive,
                     bpm=bpm,
-                    add_accompaniment=True,
+                    add_accompaniment=getattr(conf, "COMPOSE_ADD_ACCOMPANIMENT", True),
                     accompaniment_style=getattr(conf, "COMPOSE_ACCOMPANIMENT_STYLE", "block"),
                     add_counterpoint=getattr(conf, "COMPOSE_ADD_COUNTERPOINT", False),
                     counterpoint_style=getattr(conf, "COMPOSE_COUNTERPOINT_STYLE", "parallel_3rd"),
@@ -571,11 +646,13 @@ def main() -> None:
 
         threading.Thread(target=_do_export, daemon=True).start()
 
-    # macOS 上 ttk 按钮文字常不显示，底部两个键用 tk.Button 保证可见
+    # macOS 上 ttk 按钮文字常不显示，底部三个键用 tk.Button 保证可见
     if sys.platform == "darwin":
+        tk.Button(bottom, text="导出 TS 库", command=on_export_ts_lib).pack(side=tk.RIGHT, padx=(0, 8))
         tk.Button(bottom, text="导出 MIDI", command=on_export_midi).pack(side=tk.RIGHT, padx=(0, 8))
         tk.Button(bottom, text="生成并播放", command=on_play).pack(side=tk.RIGHT)
     else:
+        ttk.Button(bottom, text="导出 TS 库", command=on_export_ts_lib).pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Button(bottom, text="导出 MIDI", command=on_export_midi).pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Button(bottom, text="生成并播放", command=on_play).pack(side=tk.RIGHT)
 
