@@ -1,27 +1,27 @@
 # Musician：轨迹作曲与演奏
 
-根据**空间运动轨迹**（速度、方向、力度）生成动机，经作曲处理（伴奏、对位等）得到乐谱，再播放。
+根据**空间运动轨迹**（速度、方向、力度）得到有限个音级 key，经**旋律数据表**查表得到主旋律动机，再作曲（伴奏、对位等）得到乐谱并播放。
 
 ---
 
 ## 架构设计
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  轨迹 (Input)   │ ──► │  动机 (Motive)   │ ──► │  乐谱 (Score)   │
-│ velocity        │     │ 旋律轮廓/节奏/力度 │     │ 多声部事件序列   │
-│ direction       │     │                  │     │                 │
-│ intensity       │     └────────┬─────────┘     └────────┬────────┘
-└─────────────────┘              │                        │
-                                 │ 作曲器                  │ 播放器
-                                 │ (伴奏/对位/和声)         │
-                                 ▼                        ▼
-                        ┌──────────────────┐     ┌─────────────────┐
-                        │  composer        │     │  player          │
-                        │  - 动机声部       │     │  - 合成/采样     │
-                        │  - 伴奏声部       │     │  - 实时或导出    │
-                        │  - 对位声部(可选) │     └─────────────────┘
-                        └──────────────────┘
+┌─────────────────┐     ┌──────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  轨迹 (Input)   │ ──► │  key (5 音级)   │ ──► │  动机 (Motive)   │ ──► │  乐谱 (Score)   │
+│ velocity        │     │  trajectory_to  │     │  旋律表查表       │     │ 多声部事件序列   │
+│ direction       │     │  _key           │     │  lookup_melody   │     │                 │
+│ intensity       │     └─────────────────┘     └────────┬─────────┘     └────────┬────────┘
+└─────────────────┘              │                        │                        │
+                                 │ 旋律表 JSON             │ 作曲器                  │ 播放器
+                                 ▼                        │ (伴奏/对位/和声)         │
+                        ┌──────────────────┐              ▼                        ▼
+                        │  melody_table    │     ┌──────────────────┐     ┌─────────────────┐
+                        │  .json          │     │  composer        │     │  player          │
+                        └──────────────────┘     │  - 动机声部       │     │  - 合成/采样     │
+                                                  │  - 伴奏声部       │     │  - 实时或导出    │
+                                                  │  - 对位声部(可选) │     └─────────────────┘
+                                                  └──────────────────┘
 ```
 
 ### 模块职责
@@ -29,16 +29,16 @@
 | 模块 | 职责 | 输入/输出 |
 |------|------|-----------|
 | **models** | 轨迹点、轨迹、音符、乐谱等数据结构 | - |
-| **trajectory_to_motive** | 将轨迹映射为动机（音高轮廓、节奏、力度） | Trajectory → Motive |
+| **melody_table** | 轨迹→5 音级 key；旋律表（JSON）加载与最长前缀查表；fallback 默认旋律 | Trajectory → key；key → Motive |
 | **composer** | 以动机为主题，生成伴奏、对位，输出完整乐谱 | Motive + 参数 → Score |
 | **player** | 将乐谱渲染为音频并播放（或导出） | Score → 播放/文件 |
 
 ### 数据流
 
-1. **Trajectory**：`[(velocity, direction, intensity), ...]`  
-   - 可归一化到 0–1 或指定范围。
-2. **Motive**：旋律片段，如 `[(pitch, duration, velocity), ...]`，带可选节奏型。
-3. **Score**：多轨事件，每轨为 `(start_time, pitch, duration, velocity)` 列表，支持动机轨、伴奏轨、对位轨。
+1. **Trajectory**：`[(velocity, direction, intensity), ...]`，运动参数与调性建立联系得到音级。
+2. **Key**：固定长度音级序列（如 5 个，1–7），由 `trajectory_to_key` 从轨迹生成。
+3. **Motive**：由 key 在旋律表（JSON）中做最长前缀查表得到；无匹配时使用 fallback 默认旋律。
+4. **Score**：多轨事件，每轨为 `(start_time, pitch, duration, velocity)` 列表，支持动机轨、伴奏轨、对位轨。
 
 ---
 
@@ -58,7 +58,7 @@
 - [x] 乐谱导出（MIDI）
 
 ### Phase 3：扩展与优化
-- [x] 更多轨迹映射策略（不同风格：default / lyrical / minimal，conf.MOTIVE_STYLE）
+- [x] 主旋律来自旋律表（轨迹→key→查表，conf.MELODY_TABLE_PATH / MELODY_KEY_LENGTH）
 - [x] 小节/拍号、重音与律动（4/4、强拍 velocity 加重、八分摇摆 groove）
 - [x] 音色与混响（泛音 + ADSR 包络；可选 scipy 卷积混响）
 - [ ] 可选 GUI：轨迹绘制 → 试听 → 导出 → **移至 Phase 4**
@@ -77,7 +77,7 @@
 python -m musician
 ```
 
-或传入轨迹数据（见 `musician/__main__.py`）自定义 `velocity, direction, intensity` 数组后调用 `trajectory_to_motive` → `composer` → `player`。
+或传入轨迹数据（见 `musician/__main__.py`）自定义 `velocity, direction, intensity` 数组后调用 `trajectory_to_key` → `lookup_melody` → `composer` → `player`。
 
 ### 依赖
 
@@ -97,7 +97,8 @@ musician/
 ├── conf.py                # 可调参数
 ├── models.py              # Trajectory, Note, Score 等
 ├── tonality.py            # 调性、音阶、I-IV-V 和弦（Phase 2）
-├── trajectory_to_motive.py # 轨迹 → 动机（含风格：default/lyrical/minimal）
+├── melody_table.py        # 轨迹→key、旋律表 JSON 查表与 fallback
+├── melody_table.json      # 旋律数据表（key=音级前缀，value=旋律）
 ├── composer.py            # 动机 + 伴奏 + 对位 → Score（含 groove）
 ├── groove.py              # 4/4 强拍重音与八分摇摆（Phase 3）
 ├── player.py              # Score → 播放（泛音 + ADSR + 可选混响）

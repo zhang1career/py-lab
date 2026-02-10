@@ -17,33 +17,10 @@ def _defaults_dict() -> dict[str, Any]:
         "KEY_MODE": conf.KEY_MODE,
         "COMPOSE_ARPEGGIO_NOTE_DURATION": conf.COMPOSE_ARPEGGIO_NOTE_DURATION,
         "COMPOSE_COUNTERPOINT_VELOCITY_RATIO": conf.COMPOSE_COUNTERPOINT_VELOCITY_RATIO,
-        "MOTIVE_ROOT_MIDI": conf.MOTIVE_ROOT_MIDI,
-        "MOTIVE_PITCH_RANGE": conf.MOTIVE_PITCH_RANGE,
-        "MOTIVE_TARGET_LENGTH": conf.MOTIVE_TARGET_LENGTH,
-        "MOTIVE_BASE_DURATION": conf.MOTIVE_BASE_DURATION,
-        "MOTIVE_MIN_VELOCITY": conf.MOTIVE_MIN_VELOCITY,
-        "MOTIVE_MAX_VELOCITY": conf.MOTIVE_MAX_VELOCITY,
-        "MOTIVE_STYLE": conf.MOTIVE_STYLE,
-        "TRAJ_WEIGHT_VELOCITY_OFFSET": conf.TRAJ_WEIGHT_VELOCITY_OFFSET,
-        "TRAJ_WEIGHT_FLOOR": conf.TRAJ_WEIGHT_FLOOR,
-        "TRAJ_WEIGHT_DIR_CHANGE": conf.TRAJ_WEIGHT_DIR_CHANGE,
-        "TRAJ_WARP_ALPHA_LO": conf.TRAJ_WARP_ALPHA_LO,
-        "TRAJ_WARP_ALPHA_SPAN": conf.TRAJ_WARP_ALPHA_SPAN,
-        "TRAJ_RADIUS_DIVISOR": conf.TRAJ_RADIUS_DIVISOR,
-        "TRAJ_JITTER_SCALE_FACTOR": conf.TRAJ_JITTER_SCALE_FACTOR,
-        "TRAJ_SHUFFLE_READ_ORDER": conf.TRAJ_SHUFFLE_READ_ORDER,
-        "TRAJ_PITCH_NOISE_SEMITONES": conf.TRAJ_PITCH_NOISE_SEMITONES,
-        "TRAJ_INVERSE_CDF_MID": conf.TRAJ_INVERSE_CDF_MID,
-        "TRAJ_AGGREGATE_DIR_NOISE": conf.TRAJ_AGGREGATE_DIR_NOISE,
-        "TRAJ_AGGREGATE_VEL_NOISE": conf.TRAJ_AGGREGATE_VEL_NOISE,
-        "TRAJ_AGGREGATE_INT_NOISE": conf.TRAJ_AGGREGATE_INT_NOISE,
-        "TRAJ_CONTOUR_RANDOM_SCALE": conf.TRAJ_CONTOUR_RANDOM_SCALE,
-        "TRAJ_CONTOUR_DIR_WEIGHT": conf.TRAJ_CONTOUR_DIR_WEIGHT,
-        "TRAJ_SINGLE_STEP_NOISE": conf.TRAJ_SINGLE_STEP_NOISE,
-        "TRAJ_SINGLE_DIR_WEIGHT": conf.TRAJ_SINGLE_DIR_WEIGHT,
-        "TRAJ_SINGLE_VEL_NOISE": conf.TRAJ_SINGLE_VEL_NOISE,
-        "TRAJ_SINGLE_INT_NOISE": conf.TRAJ_SINGLE_INT_NOISE,
-        "TRAJ_VEL_TO_DUR_OFFSET": conf.TRAJ_VEL_TO_DUR_OFFSET,
+        "MELODY_TABLE_PATH": getattr(conf, "MELODY_TABLE_PATH", "") or "",
+        "MELODY_KEY": getattr(conf, "MELODY_KEY", "1,3,5,7"),
+        "MELODY_KEY_LENGTH": getattr(conf, "MELODY_KEY_LENGTH", 5),
+        "MELODY_FALLBACK": getattr(conf, "MELODY_FALLBACK", True),
         "COMPOSE_DEFAULT_BPM": conf.COMPOSE_DEFAULT_BPM,
         "COMPOSE_ADD_ACCOMPANIMENT": getattr(conf, "COMPOSE_ADD_ACCOMPANIMENT", True),
         "COMPOSE_ACCOMPANIMENT_VELOCITY": conf.COMPOSE_ACCOMPANIMENT_VELOCITY,
@@ -253,16 +230,20 @@ export function shuffle<T>(arr: T[], random: () => number): T[] {
 }
 '''
 
-    # ---------- trajectoryToMotive.ts ----------
-    trajectory_to_motive_ts = r'''/**
- * Map motion trajectory to motive (melody contour, rhythm, velocity). Port from musician.trajectory_to_motive.
+    # ---------- melodyTable.ts ----------
+    melody_table_ts = r'''/**
+ * Trajectory → key (scale degrees), melody table lookup, fallback. Port from musician.melody_table.
+ * API: trajectoryToKey(trajectory, rootMidi, mode, keyLength?) → number[];
+ *      lookupMelody(key, rootMidi, mode, table?, useFallback?) → Note[];
+ *      trajectoryOrKeyToMotive(trajectoryOrKey, params) → Note[] (trajectory or key as input).
+ *      parseMelodyTableFromJson(jsonString) → MelodyTable (load melody_table.json at runtime).
+ * params may include MELODY_TABLE (MelodyTable); when set, used for lookup instead of built-in table.
  */
 
 import type { TrajectoryPoint, Note } from "./types";
 import type { Params } from "./defaults";
 import { DEFAULT_PARAMS } from "./defaults";
-import { snapPitchToScale } from "./tonality";
-import { createRng, shuffle } from "./rng";
+import { getScale } from "./tonality";
 
 function getP<T>(p: Params, key: keyof typeof DEFAULT_PARAMS, fallback: T): T {
   const v = p[key];
@@ -275,269 +256,116 @@ function normalizeDirection(d: number): number {
   return (d / 360) * 2 - 1;
 }
 
-function contentWeights(trajectory: TrajectoryPoint[], p: Params): number[] {
-  const weights: number[] = [];
-  const wvo = getP(p, "TRAJ_WEIGHT_VELOCITY_OFFSET", DEFAULT_PARAMS.TRAJ_WEIGHT_VELOCITY_OFFSET) as number;
-  const wf = getP(p, "TRAJ_WEIGHT_FLOOR", DEFAULT_PARAMS.TRAJ_WEIGHT_FLOOR) as number;
-  const wdc = getP(p, "TRAJ_WEIGHT_DIR_CHANGE", DEFAULT_PARAMS.TRAJ_WEIGHT_DIR_CHANGE) as number;
-  let prevDir = normalizeDirection(trajectory[0].direction);
-  for (let i = 0; i < trajectory.length; i++) {
-    const pt = trajectory[i];
-    const d = normalizeDirection(pt.direction);
-    const change = i > 0 ? Math.abs(d - prevDir) : 0;
-    prevDir = d;
-    const w = pt.intensity * (wvo + Math.max(0, Math.min(1, pt.velocity))) + wf + wdc * change;
-    weights.push(w);
-  }
-  return weights;
+function degreeToPitch(degree: number, rootMidi: number, mode: string): number {
+  const scale = getScale(mode);
+  const d = (degree - 1) % 7;
+  const oct = Math.floor((degree - 1) / 7);
+  return Math.max(0, Math.min(127, rootMidi + oct * 12 + (scale[d] ?? 0)));
 }
 
-function weightsToCdf(weights: number[]): number[] {
-  const total = weights.reduce((a, b) => a + b, 0);
-  if (total <= 0) {
-    return weights.map((_, i) => i / Math.max(1, weights.length - 1));
+/** Motion trajectory → fixed-length key (scale degrees 1–7). */
+export function trajectoryToKey(
+  trajectory: TrajectoryPoint[],
+  rootMidi: number,
+  mode: string,
+  keyLength: number = 5
+): number[] {
+  const keyLen = Math.max(1, Math.min(7, keyLength));
+  if (trajectory.length === 0) return Array(keyLen).fill(1);
+  const n = trajectory.length;
+  if (n === 1) {
+    const d = normalizeDirection(trajectory[0].direction);
+    const scaleIdx = Math.max(0, Math.min(6, Math.round(3 + d * 3)));
+    return Array(keyLen).fill(scaleIdx + 1);
   }
-  const cdf = [0];
-  for (const w of weights) {
-    cdf.push(cdf[cdf.length - 1]! + w / total);
+  const scale = getScale(mode);
+  const indices = keyLen === 1 ? [0] : Array.from({ length: keyLen }, (_, i) => Math.floor(i * (n - 1) / (keyLen - 1)));
+  let cum = 3;
+  const degrees: number[] = [];
+  for (const idx of indices) {
+    const p = trajectory[Math.min(idx, n - 1)]!;
+    const d = normalizeDirection(p.direction);
+    const weight = 0.5 + 0.5 * Math.max(0, Math.min(1, p.velocity)) * Math.max(0, Math.min(1, p.intensity));
+    cum += d * 1.5 * weight;
+    cum = Math.max(0, Math.min(6, cum));
+    degrees.push((Math.round(cum) % 7) + 1);
   }
-  return cdf;
+  return degrees;
 }
 
-function warpAlpha(trajectory: TrajectoryPoint[], p: Params): number {
-  const meanVel = trajectory.reduce((s, pt) => s + Math.max(0, Math.min(1, pt.velocity)), 0) / trajectory.length;
-  const lo = getP(p, "TRAJ_WARP_ALPHA_LO", DEFAULT_PARAMS.TRAJ_WARP_ALPHA_LO) as number;
-  const span = getP(p, "TRAJ_WARP_ALPHA_SPAN", DEFAULT_PARAMS.TRAJ_WARP_ALPHA_SPAN) as number;
-  return lo + span * meanVel;
+export type MelodyTable = Record<string, Array<{ degree: number; duration: number; velocity: number }>>;
+
+const DEFAULT_MELODY_TABLE: MelodyTable = {
+  "1": [{ degree: 1, duration: 0.5, velocity: 0.85 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 1, duration: 1, velocity: 0.8 }],
+  "2": [{ degree: 2, duration: 0.5, velocity: 0.8 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }],
+  "3": [{ degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 1, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 1, velocity: 0.8 }],
+  "4": [{ degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 1, velocity: 0.8 }],
+  "5": [{ degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 1, velocity: 0.8 }],
+  "6": [{ degree: 6, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 4, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }],
+  "7": [{ degree: 7, duration: 0.5, velocity: 0.8 }, { degree: 6, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }],
+};
+
+/** Parse melody_table.json at runtime; use result as params.MELODY_TABLE in trajectoryOrKeyToMotive / trajectoryToScore. */
+export function parseMelodyTableFromJson(jsonString: string): MelodyTable {
+  return JSON.parse(jsonString) as MelodyTable;
 }
 
-function inverseCdf(cdf: number[], t: number): number {
-  t = Math.max(0, Math.min(1, t));
-  const n = cdf.length - 1;
-  if (n <= 0) return 0;
-  for (let i = 0; i < n; i++) {
-    if (cdf[i]! <= t && t <= cdf[i + 1]!) {
-      if (cdf[i + 1] === cdf[i]) return i;
-      const frac = (t - cdf[i]!) / (cdf[i + 1]! - cdf[i]!);
-      return i + frac;
-    }
+function keyToString(key: number[]): string {
+  return key.join(",");
+}
+
+function notesFromTableValue(raw: Array<{ degree?: number; duration?: number; velocity?: number }>, rootMidi: number, mode: string): Note[] {
+  const notes: Note[] = [];
+  let t = 0;
+  for (const item of raw) {
+    const degree = item.degree ?? 1;
+    const duration = item.duration ?? 0.5;
+    const velocity = Math.max(0, Math.min(1, item.velocity ?? 0.8));
+    const pitch = degreeToPitch(degree, rootMidi, mode);
+    notes.push({ pitch, duration, velocity, start: t });
+    t += duration;
   }
-  return n;
+  return notes;
 }
 
-function warpToPositions(cdf: number[], targetLength: number, alpha: number, p: Params): number[] {
-  if (targetLength <= 0) return [];
-  const mid = getP(p, "TRAJ_INVERSE_CDF_MID", DEFAULT_PARAMS.TRAJ_INVERSE_CDF_MID) as number;
-  if (targetLength === 1) return [inverseCdf(cdf, mid)];
-  const positions: number[] = [];
-  for (let k = 0; k < targetLength; k++) {
-    const u = k / (targetLength - 1);
-    const t = Math.pow(u, alpha);
-    positions.push(inverseCdf(cdf, t));
-  }
-  return positions;
-}
-
-function jitterPositions(positions: number[], trajectoryLen: number, rng: () => number, p: Params): number[] {
-  const jitterScale = Math.max(1, trajectoryLen * (getP(p, "TRAJ_JITTER_SCALE_FACTOR", DEFAULT_PARAMS.TRAJ_JITTER_SCALE_FACTOR) as number));
-  return positions.map(pos =>
-    Math.max(0, Math.min(trajectoryLen - 1, pos + (rng() - 0.5) * jitterScale))
+function fallbackMotive(rootMidi: number, mode: string): Note[] {
+  return notesFromTableValue(
+    [1, 3, 5, 3, 1].map((d) => ({ degree: d, duration: 0.5, velocity: 0.8 })),
+    rootMidi,
+    mode
   );
 }
 
-function aggregateAtPosition(
-  trajectory: TrajectoryPoint[],
-  pos: number,
-  radius: number,
-  rng: () => number,
-  p: Params,
-  noiseScale: number
-): [number, number, number] {
-  const n = trajectory.length;
-  const idxLo = Math.max(0, Math.floor(pos) - radius);
-  const idxHi = Math.min(n - 1, Math.floor(pos) + radius);
-  let sumD = 0, sumV = 0, sumI = 0, sumW = 0;
-  for (let i = idxLo; i <= idxHi; i++) {
-    const dist = Math.abs(i - pos);
-    const w = Math.max(0, 1 - dist / (radius + 1));
-    const pt = trajectory[i]!;
-    sumD += normalizeDirection(pt.direction) * w;
-    sumV += Math.max(0, Math.min(1, pt.velocity)) * w;
-    sumI += Math.max(0, Math.min(1, pt.intensity)) * w;
-    sumW += w;
-  }
-  const nd = (getP(p, "TRAJ_AGGREGATE_DIR_NOISE", DEFAULT_PARAMS.TRAJ_AGGREGATE_DIR_NOISE) as number) * noiseScale;
-  const nv = (getP(p, "TRAJ_AGGREGATE_VEL_NOISE", DEFAULT_PARAMS.TRAJ_AGGREGATE_VEL_NOISE) as number) * noiseScale;
-  const ni = (getP(p, "TRAJ_AGGREGATE_INT_NOISE", DEFAULT_PARAMS.TRAJ_AGGREGATE_INT_NOISE) as number) * noiseScale;
-  if (sumW <= 0) {
-    const pt = trajectory[Math.min(Math.floor(pos), n - 1)]!;
-    return [
-      normalizeDirection(pt.direction) + (rng() - 0.5) * nd,
-      Math.max(0, Math.min(1, Math.max(0, Math.min(1, pt.velocity)) + (rng() - 0.5) * nv)),
-      Math.max(0, Math.min(1, Math.max(0, Math.min(1, pt.intensity)) + (rng() - 0.5) * ni)),
-    ];
-  }
-  let d = sumD / sumW + (rng() - 0.5) * nd;
-  let v = Math.max(0, Math.min(1, sumV / sumW + (rng() - 0.5) * nv));
-  let i = Math.max(0, Math.min(1, sumI / sumW + (rng() - 0.5) * ni));
-  return [d, v, i];
-}
-
-function contourWithNoise(
-  normalizedDirs: number[],
-  pitchRange: number,
-  rng: () => number,
-  p: Params,
-  randomScale?: number,
-  dirWeight?: number
-): number[] {
-  const rs = randomScale ?? (getP(p, "TRAJ_CONTOUR_RANDOM_SCALE", DEFAULT_PARAMS.TRAJ_CONTOUR_RANDOM_SCALE) as number);
-  const dw = dirWeight ?? (getP(p, "TRAJ_CONTOUR_DIR_WEIGHT", DEFAULT_PARAMS.TRAJ_CONTOUR_DIR_WEIGHT) as number);
-  const offsets: number[] = [];
-  let cum = 0;
-  for (const d of normalizedDirs) {
-    const step = (rng() - 0.5) * rs + d * dw;
-    cum += step;
-    cum = Math.max(-pitchRange, Math.min(pitchRange, cum));
-    offsets.push(Math.round(cum));
-  }
-  return offsets;
-}
-
-function velocityToDuration(velocity: number, baseDuration: number, p: Params): number {
-  const v = Math.max(0, Math.min(1, velocity));
-  const offset = getP(p, "TRAJ_VEL_TO_DUR_OFFSET", DEFAULT_PARAMS.TRAJ_VEL_TO_DUR_OFFSET) as number;
-  return baseDuration * (offset - v);
-}
-
-function singlePointMotive(
-  point: TrajectoryPoint,
-  targetLength: number,
-  rng: () => number,
+/** Longest-prefix lookup in melody table; useFallback when no match. */
+export function lookupMelody(
+  key: number[] | string,
   rootMidi: number,
-  pitchRange: number,
-  baseDuration: number,
-  minVel: number,
-  maxVel: number,
-  keyRoot: number,
-  keyMode: string,
-  p: Params
+  mode: string,
+  table: MelodyTable | undefined = DEFAULT_MELODY_TABLE,
+  useFallback: boolean = true
 ): Note[] {
-  const d0 = normalizeDirection(point.direction);
-  const v0 = Math.max(0, Math.min(1, point.velocity));
-  const i0 = Math.max(0, Math.min(1, point.intensity));
-  const stepNoise = getP(p, "TRAJ_SINGLE_STEP_NOISE", DEFAULT_PARAMS.TRAJ_SINGLE_STEP_NOISE) as number;
-  const dirWeight = getP(p, "TRAJ_SINGLE_DIR_WEIGHT", DEFAULT_PARAMS.TRAJ_SINGLE_DIR_WEIGHT) as number;
-  const velNoise = getP(p, "TRAJ_SINGLE_VEL_NOISE", DEFAULT_PARAMS.TRAJ_SINGLE_VEL_NOISE) as number;
-  const intNoise = getP(p, "TRAJ_SINGLE_INT_NOISE", DEFAULT_PARAMS.TRAJ_SINGLE_INT_NOISE) as number;
-  const motive: Note[] = [];
-  let cum = 0;
-  let t = 0;
-  for (let i = 0; i < targetLength; i++) {
-    cum += d0 * dirWeight + (rng() - 0.5) * stepNoise;
-    cum = Math.max(-pitchRange, Math.min(pitchRange, cum));
-    const v = Math.max(0, Math.min(1, v0 + (rng() - 0.5) * velNoise));
-    const inten = Math.max(0, Math.min(1, i0 + (rng() - 0.5) * intNoise));
-    const dur = velocityToDuration(v, baseDuration, p);
-    const vel = Math.max(0, Math.min(1, minVel + inten * (maxVel - minVel)));
-    const pitch = snapPitchToScale(Math.round(rootMidi + cum), keyRoot, keyMode);
-    motive.push({ pitch, duration: dur, velocity: vel, start: t });
-    t += dur;
+  const keyArr = typeof key === "string" ? key.split(",").map((x) => parseInt(x.trim(), 10)) : key;
+  const tbl = table ?? DEFAULT_MELODY_TABLE;
+  for (let len = keyArr.length; len >= 1; len--) {
+    const prefix = keyArr.slice(0, len);
+    const k = keyToString(prefix);
+    const raw = tbl[k];
+    if (raw && raw.length > 0) return notesFromTableValue(raw, rootMidi, mode);
   }
-  return motive;
+  return useFallback ? fallbackMotive(rootMidi, mode) : [];
 }
 
-export function trajectoryToMotive(
-  trajectory: TrajectoryPoint[],
-  params: Params = {},
-  seed?: number
-): Note[] {
-  if (trajectory.length === 0) return [];
+/** Input: trajectory (TrajectoryPoint[]) or key (number[]). Returns motive. */
+export function trajectoryOrKeyToMotive(trajectoryOrKey: TrajectoryPoint[] | number[], params: Params = {}): Note[] {
   const p = { ...DEFAULT_PARAMS, ...params };
-  const targetLength = getP(p, "MOTIVE_TARGET_LENGTH", DEFAULT_PARAMS.MOTIVE_TARGET_LENGTH) as number;
-  const rootMidi = getP(p, "MOTIVE_ROOT_MIDI", DEFAULT_PARAMS.MOTIVE_ROOT_MIDI) as number;
-  const pitchRange = getP(p, "MOTIVE_PITCH_RANGE", DEFAULT_PARAMS.MOTIVE_PITCH_RANGE) as number;
-  const baseDuration = getP(p, "MOTIVE_BASE_DURATION", DEFAULT_PARAMS.MOTIVE_BASE_DURATION) as number;
-  const minVel = getP(p, "MOTIVE_MIN_VELOCITY", DEFAULT_PARAMS.MOTIVE_MIN_VELOCITY) as number;
-  const maxVel = getP(p, "MOTIVE_MAX_VELOCITY", DEFAULT_PARAMS.MOTIVE_MAX_VELOCITY) as number;
-  const keyRoot = getP(p, "KEY_ROOT_MIDI", DEFAULT_PARAMS.KEY_ROOT_MIDI) as number;
-  const keyMode = getP(p, "KEY_MODE", DEFAULT_PARAMS.KEY_MODE) as string;
-  const style = (getP(p, "MOTIVE_STYLE", DEFAULT_PARAMS.MOTIVE_STYLE) as string).toLowerCase();
-  const rng = createRng(seed ?? 0);
-
-  if (trajectory.length === 1) {
-    return singlePointMotive(
-      trajectory[0]!, targetLength, rng, rootMidi, pitchRange, baseDuration, minVel, maxVel, keyRoot, keyMode, p
-    );
-  }
-
-  let tl: number = targetLength;
-  let pr: number = pitchRange;
-  let bd: number = baseDuration;
-  let shuffleRead: boolean = getP(p, "TRAJ_SHUFFLE_READ_ORDER", DEFAULT_PARAMS.TRAJ_SHUFFLE_READ_ORDER) as boolean;
-  let contourRandomScale: number = getP(p, "TRAJ_CONTOUR_RANDOM_SCALE", DEFAULT_PARAMS.TRAJ_CONTOUR_RANDOM_SCALE) as number;
-  let contourDirWeight: number = getP(p, "TRAJ_CONTOUR_DIR_WEIGHT", DEFAULT_PARAMS.TRAJ_CONTOUR_DIR_WEIGHT) as number;
-  let pitchNoise: number = getP(p, "TRAJ_PITCH_NOISE_SEMITONES", DEFAULT_PARAMS.TRAJ_PITCH_NOISE_SEMITONES) as number;
-  let aggNoiseScale: number = 1;
-  if (style === "lyrical") {
-    tl = Math.min(targetLength, 96);
-    pr = Math.min(pitchRange, 10);
-    bd = baseDuration * 1.4;
-    shuffleRead = false;
-    contourRandomScale = 2;
-    contourDirWeight = 1.2;
-    pitchNoise = 1;
-    aggNoiseScale = 0.4;
-  } else if (style === "minimal") {
-    tl = Math.max(8, Math.floor(targetLength / 2));
-    pr = Math.min(pitchRange, 8);
-    bd = baseDuration * 1.2;
-    shuffleRead = false;
-    contourRandomScale = 1.5;
-    contourDirWeight = 0.6;
-    pitchNoise = 0;
-    aggNoiseScale = 0.3;
-  }
-
-  const n = trajectory.length;
-  const weights = contentWeights(trajectory, p);
-  const cdf = weightsToCdf(weights);
-  const alpha = warpAlpha(trajectory, p);
-  let trajectoryPositions = warpToPositions(cdf, tl, alpha, p);
-  trajectoryPositions = jitterPositions(trajectoryPositions, n, rng, p);
-  if (shuffleRead) {
-    const perm = shuffle(Array.from({ length: tl }, (_, j) => j), rng);
-    trajectoryPositions = perm.map((j) => trajectoryPositions[j]!);
-  }
-
-  const radius = Math.max(1, Math.floor(n / (getP(p, "TRAJ_RADIUS_DIVISOR", DEFAULT_PARAMS.TRAJ_RADIUS_DIVISOR) as number)));
-  const dirs: number[] = [];
-  const vels: number[] = [];
-  const ints: number[] = [];
-  for (const pos of trajectoryPositions) {
-    const [d, v, i] = aggregateAtPosition(trajectory, pos, radius, rng, p, aggNoiseScale);
-    dirs.push(d);
-    vels.push(v);
-    ints.push(i);
-  }
-
-  let pitchOffsets = contourWithNoise(dirs, pr, rng, p, contourRandomScale, contourDirWeight);
-  for (let k = 0; k < tl; k++) {
-    const no = Math.floor(rng() * (2 * pitchNoise + 1)) - pitchNoise;
-    pitchOffsets[k] = (pitchOffsets[k] ?? 0) + no;
-  }
-
-  const motive: Note[] = [];
-  let t = 0;
-  for (let k = 0; k < tl; k++) {
-    const dur = velocityToDuration(vels[k]!, bd, p);
-    const vel = Math.max(0, Math.min(1, minVel + (ints[k] ?? 0) * (maxVel - minVel)));
-    let pitch = Math.max(0, Math.min(127, rootMidi + (pitchOffsets[k] ?? 0)));
-    pitch = snapPitchToScale(pitch, keyRoot, keyMode);
-    motive.push({ pitch, duration: dur, velocity: vel, start: t });
-    t += dur;
-  }
-  return motive;
+  const rootMidi = getP(p, "KEY_ROOT_MIDI", DEFAULT_PARAMS.KEY_ROOT_MIDI) as number;
+  const mode = getP(p, "KEY_MODE", DEFAULT_PARAMS.KEY_MODE) as string;
+  const keyLength = getP(p, "MELODY_KEY_LENGTH", DEFAULT_PARAMS.MELODY_KEY_LENGTH) as number;
+  const useFallback = getP(p, "MELODY_FALLBACK", DEFAULT_PARAMS.MELODY_FALLBACK) as boolean;
+  const table = (params as Params & { MELODY_TABLE?: MelodyTable }).MELODY_TABLE;
+  const isTrajectory = Array.isArray(trajectoryOrKey) && trajectoryOrKey.length > 0 && typeof trajectoryOrKey[0] === "object" && "direction" in (trajectoryOrKey[0] as object);
+  const key = isTrajectory ? trajectoryToKey(trajectoryOrKey as TrajectoryPoint[], rootMidi, mode, keyLength) : (trajectoryOrKey as number[]);
+  return lookupMelody(key, rootMidi, mode, table, useFallback);
 }
 '''
 
@@ -879,18 +707,20 @@ function applyGroove(score: Score, p: Params): Score {
     # ---------- index.ts ----------
     index_ts = r'''/**
  * Musician Score Library (React Native friendly).
- * Input: motion trajectory + optional params (same names as Python conf, override defaults).
+ * Input: motion trajectory OR scale-degree key (number[]) + optional params.
  * Output: Score (bpm, time_signature, tracks with notes: pitch, duration, velocity, start).
  *
  * Usage:
  *   import { trajectoryToScore } from "musician-ts-lib";
  *   const trajectory = [{ velocity: 0.5, direction: 180, intensity: 0.7 }, ...];
- *   const score = trajectoryToScore(trajectory, { MOTIVE_TARGET_LENGTH: 32 }, 12345);
+ *   const score = trajectoryToScore(trajectory, { MELODY_KEY_LENGTH: 5 });
+ *   // Or pass key (scale degrees) directly:
+ *   const score = trajectoryToScore([1, 3, 5, 3, 1], params);
  */
 
 import type { TrajectoryPoint, Score } from "./types";
 import type { Params } from "./defaults";
-import { trajectoryToMotive } from "./trajectoryToMotive";
+import { trajectoryOrKeyToMotive } from "./melodyTable";
 import { compose } from "./composer";
 
 export type { TrajectoryPoint, Note, Track, Score } from "./types";
@@ -898,19 +728,20 @@ export type { Params } from "./defaults";
 export { DEFAULT_PARAMS } from "./defaults";
 
 /**
- * Generate a Score from motion trajectory and optional parameters.
- * Same-name keys in params override defaults. seed is optional for reproducible motive.
+ * Generate a Score from motion trajectory or from a key (scale degrees 1–7).
+ * When trajectory is TrajectoryPoint[], key is derived and melody table is used.
+ * When trajectory is number[], it is used as key to lookup melody directly.
  */
 export function trajectoryToScore(
-  trajectory: TrajectoryPoint[],
-  params: Params = {},
-  seed?: number
+  trajectoryOrKey: TrajectoryPoint[] | number[],
+  params: Params = {}
 ): Score {
-  const motive = trajectoryToMotive(trajectory, params, seed);
+  const motive = trajectoryOrKeyToMotive(trajectoryOrKey, params);
   return compose(motive, params);
 }
 
-export { trajectoryToMotive } from "./trajectoryToMotive";
+export { trajectoryToKey, lookupMelody, trajectoryOrKeyToMotive, parseMelodyTableFromJson } from "./melodyTable";
+export type { MelodyTable } from "./melodyTable";
 export { compose } from "./composer";
 '''
 
@@ -971,10 +802,27 @@ npm run build
 
 ### `trajectoryToScore(trajectory, params?, seed?)`
 
-- **trajectory**: `TrajectoryPoint[]` — 运动轨迹，每点 `{ velocity, direction, intensity }`（velocity/intensity 建议 0~1，direction 如 0~360 角度）
-- **params**: `Params`（可选）— 与 Python `conf` 同名的键，用于覆盖默认值，如 `{ MOTIVE_TARGET_LENGTH: 32, KEY_MODE: "minor" }`
-- **seed**: `number`（可选）— 随机种子，相同轨迹+种子得到相同动机
+- **trajectoryOrKey**: `TrajectoryPoint[]` 或 `number[]` — 运动轨迹（每点 `{ velocity, direction, intensity }`）或一串音级 key（1–7），后者直接查旋律表
+- **params**: `Params`（可选）— 与 Python `conf` 同名的键，如 `{ MELODY_KEY_LENGTH: 5, KEY_MODE: "minor" }`；可传 `MELODY_TABLE` 使用运行时加载的旋律表
 - **返回**: `Score` — `{ bpm, time_signature, tracks: { name, notes: { pitch, duration, velocity, start }[] }[] }`
+
+### 运行时加载旋律表 (melody_table.json)
+
+默认使用库内嵌的旋律表；若需与 Python 侧共用 `melody_table.json`，可在 TS 侧加载 JSON 后通过 `params.MELODY_TABLE` 传入：
+
+```ts
+import { trajectoryToScore, parseMelodyTableFromJson } from "musician-ts-lib";
+
+// 方式一：fetch 后解析
+const res = await fetch("/path/to/melody_table.json");
+const json = await res.text();
+const melodyTable = parseMelodyTableFromJson(json);
+const score = trajectoryToScore(trajectory, { MELODY_TABLE: melodyTable });
+
+// 方式二：已读入的 JSON 字符串
+const melodyTable = parseMelodyTableFromJson(jsonString);
+const score = trajectoryToScore(trajectory, { MELODY_TABLE: melodyTable });
+```
 
 ### 类型
 
@@ -993,7 +841,7 @@ const trajectory = [
   { velocity: 0.8, direction: 90, intensity: 0.9 },
   // ...
 ];
-const score = trajectoryToScore(trajectory, { MOTIVE_TARGET_LENGTH: 64 }, 42);
+const score = trajectoryToScore(trajectory, { MELODY_KEY_LENGTH: 5 });
 // score.tracks[0].notes 为动机轨，可再交给播放或 MIDI 导出
 ```
 
@@ -1004,7 +852,7 @@ const score = trajectoryToScore(trajectory, { MOTIVE_TARGET_LENGTH: 64 }, 42);
         (os.path.join(src, "defaults.ts"), defaults_ts),
         (os.path.join(src, "tonality.ts"), tonality_ts),
         (os.path.join(src, "rng.ts"), rng_ts),
-        (os.path.join(src, "trajectoryToMotive.ts"), trajectory_to_motive_ts),
+        (os.path.join(src, "melodyTable.ts"), melody_table_ts),
         (os.path.join(src, "composer.ts"), composer_ts),
         (os.path.join(src, "index.ts"), index_ts),
         (os.path.join(target, "package.json"), package_json),

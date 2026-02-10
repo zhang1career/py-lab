@@ -23,10 +23,20 @@ CONF_PY_DEBOUNCE_MS = 80
 # 监控 musician 目录下 .py 文件的轮询间隔（秒）
 WATCH_POLL_INTERVAL = 1.0
 from musician.models import TrajectoryPoint, Note
-from musician.trajectory_to_motive import trajectory_to_motive
+from musician.melody_table import trajectory_to_key, lookup_melody
 from musician.composer import compose
 from musician.export_midi import export_score_to_midi
 from musician.export_ts_lib import export_ts_lib
+
+
+def _get_melody_key(trajectory: list, key_root: int, key_mode: str):
+    """若 conf.MELODY_KEY 非空则解析为数字列表作为 key，否则由轨迹生成 key。"""
+    melody_key_str = (getattr(conf, "MELODY_KEY", "") or "").strip()
+    if melody_key_str:
+        return tuple(int(x.strip()) for x in melody_key_str.split(",") if x.strip())
+    return trajectory_to_key(
+        trajectory, key_root, key_mode, key_length=getattr(conf, "MELODY_KEY_LENGTH", 5)
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -43,45 +53,12 @@ PANEL_GROUPS = [
         ],
     ),
     (
-        "动机输出（音高 / 力度 / 长度 / 节奏）",
+        "旋律表（轨迹→key→查表）",
         [
-            ("MOTIVE_ROOT_MIDI", "int", 60, "基准音高 MIDI，如 60=C4", 0, 127),
-            ("MOTIVE_PITCH_RANGE", "int", 12, "音高相对基准的 ±半音范围", 1, 24),
-            ("MOTIVE_TARGET_LENGTH", "int", 64, "固定输出动机长度（音符数）", 8, 256),
-            ("MOTIVE_BASE_DURATION", "float", 0.25, "基准时值（拍）", 0.05, 2.0),
-            ("MOTIVE_MIN_VELOCITY", "float", 0.3, "力度下界 [0,1]", 0.0, 1.0),
-            ("MOTIVE_MAX_VELOCITY", "float", 0.95, "力度上界 [0,1]", 0.0, 1.0),
-            ("MOTIVE_STYLE", "choice", "default", "轨迹→动机风格", "default", "lyrical", "minimal"),
-        ],
-    ),
-    (
-        "轨迹→动机：权重与 warp",
-        [
-            ("TRAJ_WEIGHT_VELOCITY_OFFSET", "float", 0.5, "权重中速度项偏移", 0.0, 2.0),
-            ("TRAJ_WEIGHT_FLOOR", "float", 0.1, "权重下限，避免为 0", 0.0, 1.0),
-            ("TRAJ_WEIGHT_DIR_CHANGE", "float", 0.3, "方向变化在权重中的系数", 0.0, 2.0),
-            ("TRAJ_WARP_ALPHA_LO", "float", 0.85, "warp 幂次下界", 0.3, 1.5),
-            ("TRAJ_WARP_ALPHA_SPAN", "float", 0.3, "warp 幂次随速度的跨度", 0.0, 1.0),
-            ("TRAJ_RADIUS_DIVISOR", "int", 16, "邻域半径 = 轨迹长 // 此值", 4, 64),
-            ("TRAJ_JITTER_SCALE_FACTOR", "float", 0.08, "位置抖动相对轨迹长的比例", 0.0, 0.5),
-            ("TRAJ_SHUFFLE_READ_ORDER", "bool", True, "打乱「音序↔轨迹位置」对应，旋律非线性"),
-            ("TRAJ_PITCH_NOISE_SEMITONES", "int", 3, "每音随机半音偏移 ±N", 0, 12),
-            ("TRAJ_INVERSE_CDF_MID", "float", 0.5, "单点轨迹时 CDF 查询位置", 0.0, 1.0),
-        ],
-    ),
-    (
-        "轨迹→动机：随机扰动",
-        [
-            ("TRAJ_AGGREGATE_DIR_NOISE", "float", 1.8, "邻域聚合方向扰动幅度", 0.0, 4.0),
-            ("TRAJ_AGGREGATE_VEL_NOISE", "float", 0.55, "邻域聚合速度扰动幅度", 0.0, 2.0),
-            ("TRAJ_AGGREGATE_INT_NOISE", "float", 0.55, "邻域聚合力度扰动幅度", 0.0, 2.0),
-            ("TRAJ_CONTOUR_RANDOM_SCALE", "float", 5.0, "轮廓步长随机部分幅度", 0.0, 10.0),
-            ("TRAJ_CONTOUR_DIR_WEIGHT", "float", 0.4, "轮廓步长中轨迹方向权重", 0.0, 2.0),
-            ("TRAJ_SINGLE_STEP_NOISE", "float", 2.2, "单点轨迹随机游走步长噪声", 0.0, 5.0),
-            ("TRAJ_SINGLE_DIR_WEIGHT", "float", 0.5, "单点轨迹方向偏置权重", 0.0, 2.0),
-            ("TRAJ_SINGLE_VEL_NOISE", "float", 0.5, "单点轨迹速度扰动", 0.0, 2.0),
-            ("TRAJ_SINGLE_INT_NOISE", "float", 0.5, "单点轨迹力度扰动", 0.0, 2.0),
-            ("TRAJ_VEL_TO_DUR_OFFSET", "float", 1.5, "速度→时值公式中的偏移", 0.5, 3.0),
+            ("MELODY_TABLE_PATH", "str", "", "旋律表 JSON 路径（空=包内默认）"),
+            ("MELODY_KEY", "str", "1,3,5,7", "key 列表（逗号分隔，如 1,3,5,7；非空时用此查表）"),
+            ("MELODY_KEY_LENGTH", "int", 5, "key 长度（音级个数）", 1, 7),
+            ("MELODY_FALLBACK", "bool", True, "无匹配时使用默认旋律"),
         ],
     ),
     (
@@ -210,6 +187,8 @@ def _get_panel_values(vars_map: dict, kinds: dict) -> dict:
         val = var.get()
         if kind == "bool":
             out[key] = bool(val)
+        elif kind == "str":
+            out[key] = str(val).strip() if val is not None else ""
         elif kind == "int":
             try:
                 out[key] = int(float(val))
@@ -249,12 +228,8 @@ def _conf_py_section_for_key(key: str) -> Optional[str]:
     """返回该键所属的 conf.py 小节标题（仅在该节第一个键时返回，用于插入注释）。"""
     if key == "KEY_ROOT_MIDI":
         return "# 调性（动机与作曲）"
-    if key == "MOTIVE_ROOT_MIDI":
-        return "# 动机输出：音高与力度范围、默认长度与节奏"
-    if key == "TRAJ_WEIGHT_VELOCITY_OFFSET":
-        return "# 轨迹→动机：权重与 warp"
-    if key == "TRAJ_AGGREGATE_DIR_NOISE":
-        return "# 轨迹→动机：随机扰动（方向 / 速度 / 力度 / 轮廓）"
+    if key == "MELODY_TABLE_PATH":
+        return "# 旋律表：轨迹→key→查表得到主旋律"
     if key == "COMPOSE_DEFAULT_BPM":
         return "# 作曲器：伴奏与和声"
     if key == "COMPOSE_ADD_PAD":
@@ -334,7 +309,7 @@ import random
 import time
 from musician import conf
 from musician.models import TrajectoryPoint, Note
-from musician.trajectory_to_motive import trajectory_to_motive
+from musician.melody_table import trajectory_to_key, lookup_melody
 from musician.composer import compose
 from musician.player import play_score
 
@@ -358,16 +333,15 @@ def make_trajectory(length):
     return points
 
 trajectory = make_trajectory(conf.DEMO_TRAJECTORY_LENGTH)
+key_root = getattr(conf, "KEY_ROOT_MIDI", 60)
+key_mode = getattr(conf, "KEY_MODE", "major")
+melody_key_str = (getattr(conf, "MELODY_KEY", "") or "").strip()
+if melody_key_str:
+    key = tuple(int(x.strip()) for x in melody_key_str.split(",") if x.strip())
+else:
+    key = trajectory_to_key(trajectory, key_root, key_mode, key_length=getattr(conf, "MELODY_KEY_LENGTH", 5))
+motive = lookup_melody(key, key_root, key_mode, use_fallback=getattr(conf, "MELODY_FALLBACK", True))
 seed = (time.time_ns() % (2**32)) ^ (os.getpid() % (2**32))
-motive = trajectory_to_motive(
-    trajectory,
-    target_length=conf.MOTIVE_TARGET_LENGTH,
-    base_duration=conf.MOTIVE_BASE_DURATION,
-    key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
-    key_mode=getattr(conf, "KEY_MODE", "major"),
-    seed=seed,
-    style=getattr(conf, "MOTIVE_STYLE", "default"),
-)
 rng = random.Random(seed)
 transpose = rng.randint(conf.DEMO_TRANSPOSE_MIN, conf.DEMO_TRANSPOSE_MAX)
 bpm = rng.randint(conf.DEMO_BPM_MIN, conf.DEMO_BPM_MAX)
@@ -474,6 +448,12 @@ def _build_group(
             cb = ttk.Checkbutton(row, variable=var, text="开启")
             cb.pack(side=tk.LEFT)
             vars_map[key] = var
+        elif kind == "str":
+            var = tk.StringVar(value=str(getattr(conf, key, default) or ""))
+            entry = ttk.Entry(row, width=24, textvariable=var)
+            entry.pack(side=tk.LEFT)
+            vars_map[key] = var
+            row_widgets.append(entry)
         elif kind == "choice":
             options = list(rest)
             current = getattr(conf, key, default)
@@ -718,16 +698,11 @@ def main() -> None:
             try:
                 _apply_panel_to_conf(vars_map, kinds)
                 trajectory = make_demo_trajectory(conf.DEMO_TRAJECTORY_LENGTH)
+                key_root = getattr(conf, "KEY_ROOT_MIDI", 60)
+                key_mode = getattr(conf, "KEY_MODE", "major")
+                key = _get_melody_key(trajectory, key_root, key_mode)
+                motive = lookup_melody(key, key_root, key_mode, use_fallback=getattr(conf, "MELODY_FALLBACK", True))
                 seed = (time.time_ns() % (2**32)) ^ (os.getpid() % (2**32))
-                motive = trajectory_to_motive(
-                    trajectory,
-                    target_length=conf.MOTIVE_TARGET_LENGTH,
-                    base_duration=conf.MOTIVE_BASE_DURATION,
-                    key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
-                    key_mode=getattr(conf, "KEY_MODE", "major"),
-                    seed=seed,
-                    style=getattr(conf, "MOTIVE_STYLE", "default"),
-                )
                 import random
                 rng = random.Random(seed)
                 transpose = rng.randint(conf.DEMO_TRANSPOSE_MIN, conf.DEMO_TRANSPOSE_MAX)

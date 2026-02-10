@@ -11,41 +11,12 @@ KEY_MODE = 'major'
 COMPOSE_ARPEGGIO_NOTE_DURATION = 0.35
 COMPOSE_COUNTERPOINT_VELOCITY_RATIO = 0.15
 # -----------------------------------------------------------------------------
-# 动机输出：音高与力度范围、默认长度与节奏
+# 旋律表：轨迹→key→查表得到主旋律
 # -----------------------------------------------------------------------------
-MOTIVE_ROOT_MIDI = 60
-MOTIVE_PITCH_RANGE = 12
-MOTIVE_TARGET_LENGTH = 16
-MOTIVE_BASE_DURATION = 0.5
-MOTIVE_MIN_VELOCITY = 0.95
-MOTIVE_MAX_VELOCITY = 1.0
-MOTIVE_STYLE = 'lyrical'
-# -----------------------------------------------------------------------------
-# 轨迹→动机：权重与 warp
-# -----------------------------------------------------------------------------
-TRAJ_WEIGHT_VELOCITY_OFFSET = 0.5
-TRAJ_WEIGHT_FLOOR = 0.1
-TRAJ_WEIGHT_DIR_CHANGE = 0.3
-TRAJ_WARP_ALPHA_LO = 0.85
-TRAJ_WARP_ALPHA_SPAN = 0.3
-TRAJ_RADIUS_DIVISOR = 16
-TRAJ_JITTER_SCALE_FACTOR = 0.08
-TRAJ_SHUFFLE_READ_ORDER = False
-TRAJ_PITCH_NOISE_SEMITONES = 0
-TRAJ_INVERSE_CDF_MID = 0.5
-# -----------------------------------------------------------------------------
-# 轨迹→动机：随机扰动（方向 / 速度 / 力度 / 轮廓）
-# -----------------------------------------------------------------------------
-TRAJ_AGGREGATE_DIR_NOISE = 1.8
-TRAJ_AGGREGATE_VEL_NOISE = 0.55
-TRAJ_AGGREGATE_INT_NOISE = 0.55
-TRAJ_CONTOUR_RANDOM_SCALE = 3.0
-TRAJ_CONTOUR_DIR_WEIGHT = 0.4
-TRAJ_SINGLE_STEP_NOISE = 2.2
-TRAJ_SINGLE_DIR_WEIGHT = 0.5
-TRAJ_SINGLE_VEL_NOISE = 0.3
-TRAJ_SINGLE_INT_NOISE = 0.5
-TRAJ_VEL_TO_DUR_OFFSET = 2.0
+MELODY_TABLE_PATH = 'melody_table.json'
+MELODY_KEY = '7'
+MELODY_KEY_LENGTH = 5
+MELODY_FALLBACK = True
 # -----------------------------------------------------------------------------
 # 作曲器：伴奏与和声
 # -----------------------------------------------------------------------------

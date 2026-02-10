@@ -1,6 +1,6 @@
 """
 调性：音阶、调内音、I-IV-V-I 和弦。
-供 trajectory_to_motive（动机 snap）与 composer（和声）共用。
+供 melody_table（轨迹→key、查表）与 composer（和声）共用。
 """
 from typing import List, Tuple
 
