@@ -39,8 +39,9 @@ class Track:
 
 @dataclass
 class Score:
-    """完整乐谱：多轨。"""
+    """完整乐谱：多轨。拍号仅支持 4/4。"""
     bpm: float = 120
+    time_signature: Tuple[int, int] = (4, 4)
     tracks: List[Track] = field(default_factory=list)
 
     def total_duration(self) -> float:

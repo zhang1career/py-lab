@@ -7,7 +7,7 @@
 # 调性（动机与作曲）
 # -----------------------------------------------------------------------------
 KEY_ROOT_MIDI = 60
-KEY_MODE = 'minor'
+KEY_MODE = 'major'
 COMPOSE_ARPEGGIO_NOTE_DURATION = 0.35
 COMPOSE_COUNTERPOINT_VELOCITY_RATIO = 0.7
 # -----------------------------------------------------------------------------
@@ -19,6 +19,7 @@ MOTIVE_TARGET_LENGTH = 64
 MOTIVE_BASE_DURATION = 0.25
 MOTIVE_MIN_VELOCITY = 0.3
 MOTIVE_MAX_VELOCITY = 0.95
+MOTIVE_STYLE = 'default'
 # -----------------------------------------------------------------------------
 # 轨迹→动机：权重与 warp
 # -----------------------------------------------------------------------------
@@ -51,9 +52,17 @@ TRAJ_VEL_TO_DUR_OFFSET = 1.5
 COMPOSE_DEFAULT_BPM = 120
 COMPOSE_ACCOMPANIMENT_VELOCITY = 0.35
 COMPOSE_CHORD_DURATION = 4.0
-COMPOSE_ACCOMPANIMENT_STYLE = 'rhythm_pattern'
+COMPOSE_ACCOMPANIMENT_STYLE = 'block'
 COMPOSE_ADD_COUNTERPOINT = True
 COMPOSE_COUNTERPOINT_STYLE = 'parallel_3rd'
+TIME_SIGNATURE_NUMERATOR = 4
+TIME_SIGNATURE_DENOMINATOR = 4
+# -----------------------------------------------------------------------------
+# 律动：4/4 强拍与摇摆
+# -----------------------------------------------------------------------------
+BEATS_PER_BAR = 4
+GROOVE_ACCENT_STRONG_BEAT_FACTOR = 1.25
+GROOVE_SWING_AMOUNT = 0.25
 # -----------------------------------------------------------------------------
 # 播放器：音频与包络
 # -----------------------------------------------------------------------------
@@ -63,6 +72,14 @@ PLAYER_A4_MIDI = 70
 PLAYER_FADE_DIVISOR = 32
 PLAYER_FADE_MAX_SAMPLES = 256
 PLAYER_MASTER_GAIN = 0.8
+PLAYER_OVERTONE_2_RATIO = 0.5
+PLAYER_OVERTONE_3_RATIO = 0.33
+PLAYER_ATTACK_SEC = 0.01
+PLAYER_DECAY_SEC = 0.05
+PLAYER_SUSTAIN_LEVEL = 0.7
+PLAYER_RELEASE_SEC = 0.05
+PLAYER_REVERB_WET = 0.2
+PLAYER_REVERB_LENGTH_SEC = 0.4
 # -----------------------------------------------------------------------------
 # 演示 (__main__)：示例轨迹与随机范围
 # -----------------------------------------------------------------------------

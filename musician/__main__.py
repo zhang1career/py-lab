@@ -51,6 +51,7 @@ PANEL_GROUPS = [
             ("MOTIVE_BASE_DURATION", "float", 0.25, "基准时值（拍）", 0.05, 2.0),
             ("MOTIVE_MIN_VELOCITY", "float", 0.3, "力度下界 [0,1]", 0.0, 1.0),
             ("MOTIVE_MAX_VELOCITY", "float", 0.95, "力度上界 [0,1]", 0.0, 1.0),
+            ("MOTIVE_STYLE", "choice", "default", "轨迹→动机风格", "default", "lyrical", "minimal"),
         ],
     ),
     (
@@ -95,6 +96,14 @@ PANEL_GROUPS = [
         ],
     ),
     (
+        "律动（4/4 强拍与摇摆）",
+        [
+            ("BEATS_PER_BAR", "int", 4, "每小节拍数（仅支持 4）", 4, 4),
+            ("GROOVE_ACCENT_STRONG_BEAT_FACTOR", "float", 1.25, "强拍力度倍数", 1.0, 2.0),
+            ("GROOVE_SWING_AMOUNT", "float", 0.25, "八分摇摆量（后半八分延后）", 0.0, 0.5),
+        ],
+    ),
+    (
         "播放器",
         [
             ("PLAYER_SAMPLE_RATE", "int", 44100, "采样率 Hz", 8000, 96000),
@@ -103,6 +112,14 @@ PANEL_GROUPS = [
             ("PLAYER_FADE_DIVISOR", "int", 32, "淡入淡出长度除数", 8, 128),
             ("PLAYER_FADE_MAX_SAMPLES", "int", 256, "淡入淡出最大采样数", 64, 1024),
             ("PLAYER_MASTER_GAIN", "float", 0.8, "总增益 [0,1]", 0.1, 1.0),
+            ("PLAYER_OVERTONE_2_RATIO", "float", 0.5, "二次泛音比例", 0.0, 1.0),
+            ("PLAYER_OVERTONE_3_RATIO", "float", 0.33, "三次泛音比例", 0.0, 1.0),
+            ("PLAYER_ATTACK_SEC", "float", 0.01, "ADSR 起音（秒）", 0.0, 0.1),
+            ("PLAYER_DECAY_SEC", "float", 0.05, "ADSR 衰减（秒）", 0.0, 0.2),
+            ("PLAYER_SUSTAIN_LEVEL", "float", 0.7, "ADSR 持续电平 [0,1]", 0.0, 1.0),
+            ("PLAYER_RELEASE_SEC", "float", 0.05, "ADSR 释音（秒）", 0.0, 0.3),
+            ("PLAYER_REVERB_WET", "float", 0.2, "混响湿声比例 [0,1]", 0.0, 1.0),
+            ("PLAYER_REVERB_LENGTH_SEC", "float", 0.4, "混响 IR 长度（秒）", 0.1, 1.0),
         ],
     ),
     (
@@ -163,6 +180,11 @@ def _apply_panel_to_conf(vars_map: dict, kinds: dict) -> None:
 def _conf_py_key_order() -> list:
     """conf.py 中键的写出顺序（与 PANEL_GROUPS 一致，并补全非面板键）。"""
     keys = [key for _t, params in PANEL_GROUPS for key, *_ in params]
+    # 律动小节中保留拍号（仅 4/4，不暴露在面板）
+    for k in ("TIME_SIGNATURE_NUMERATOR", "TIME_SIGNATURE_DENOMINATOR"):
+        if k not in keys:
+            idx = keys.index("BEATS_PER_BAR") if "BEATS_PER_BAR" in keys else len(keys)
+            keys.insert(idx, k)
     for k in ("PLAYER_SEMITONE_RATIO", "PLAYER_INT16_SCALE"):
         if k not in keys:
             keys.append(k)
@@ -181,6 +203,8 @@ def _conf_py_section_for_key(key: str) -> Optional[str]:
         return "# 轨迹→动机：随机扰动（方向 / 速度 / 力度 / 轮廓）"
     if key == "COMPOSE_DEFAULT_BPM":
         return "# 作曲器：伴奏与和声"
+    if key == "BEATS_PER_BAR":
+        return "# 律动：4/4 强拍与摇摆"
     if key == "PLAYER_SAMPLE_RATE":
         return "# 播放器：音频与包络"
     if key == "DEMO_TRAJECTORY_LENGTH":
@@ -286,6 +310,7 @@ motive = trajectory_to_motive(
     key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
     key_mode=getattr(conf, "KEY_MODE", "major"),
     seed=seed,
+    style=getattr(conf, "MOTIVE_STYLE", "default"),
 )
 rng = random.Random(seed)
 transpose = rng.randint(conf.DEMO_TRANSPOSE_MIN, conf.DEMO_TRANSPOSE_MAX)
@@ -521,6 +546,7 @@ def main() -> None:
                     key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
                     key_mode=getattr(conf, "KEY_MODE", "major"),
                     seed=seed,
+                    style=getattr(conf, "MOTIVE_STYLE", "default"),
                 )
                 import random
                 rng = random.Random(seed)

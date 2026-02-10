@@ -6,6 +6,7 @@ from typing import List, Optional
 from . import conf
 from .models import Motive, Note, Score, Track
 from .tonality import get_progression_chords, interval_in_scale_steps, get_scale
+from .groove import apply_groove
 
 
 def compose(
@@ -42,7 +43,10 @@ def compose(
         cpt = _make_counterpoint(motive, k_root, k_mode, counterpoint_style)
         tracks.append(Track(name="counterpoint", notes=cpt))
 
-    return Score(bpm=bpm, tracks=tracks)
+    num = getattr(conf, "TIME_SIGNATURE_NUMERATOR", 4)
+    denom = getattr(conf, "TIME_SIGNATURE_DENOMINATOR", 4)
+    score = Score(bpm=bpm, time_signature=(num, denom), tracks=tracks)
+    return apply_groove(score)
 
 
 def _make_accompaniment(

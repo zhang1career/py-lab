@@ -58,9 +58,12 @@
 - [x] 乐谱导出（MIDI）
 
 ### Phase 3：扩展与优化
-- [ ] 更多轨迹映射策略（不同风格）
-- [ ] 小节/拍号、重音与律动
-- [ ] 音色与混响（更好听）
+- [x] 更多轨迹映射策略（不同风格：default / lyrical / minimal，conf.MOTIVE_STYLE）
+- [x] 小节/拍号、重音与律动（4/4、强拍 velocity 加重、八分摇摆 groove）
+- [x] 音色与混响（泛音 + ADSR 包络；可选 scipy 卷积混响）
+- [ ] 可选 GUI：轨迹绘制 → 试听 → 导出 → **移至 Phase 4**
+
+### Phase 4：GUI（规划）
 - [ ] 可选 GUI：轨迹绘制 → 试听 → 导出
 
 ---
@@ -80,6 +83,7 @@ python -m musician
 
 - Python 3.8+
 - numpy, simpleaudio, MIDIUtil（见项目根目录 `requirements.txt`）
+- 可选：`pip install scipy` 以启用卷积混响
 
 ---
 
@@ -93,8 +97,9 @@ musician/
 ├── conf.py                # 可调参数
 ├── models.py              # Trajectory, Note, Score 等
 ├── tonality.py            # 调性、音阶、I-IV-V 和弦（Phase 2）
-├── trajectory_to_motive.py # 轨迹 → 动机
-├── composer.py            # 动机 + 伴奏 + 对位 → Score
-├── player.py              # Score → 播放
+├── trajectory_to_motive.py # 轨迹 → 动机（含风格：default/lyrical/minimal）
+├── composer.py            # 动机 + 伴奏 + 对位 → Score（含 groove）
+├── groove.py              # 4/4 强拍重音与八分摇摆（Phase 3）
+├── player.py              # Score → 播放（泛音 + ADSR + 可选混响）
 └── export_midi.py         # Score → MIDI 文件（Phase 2）
 ```

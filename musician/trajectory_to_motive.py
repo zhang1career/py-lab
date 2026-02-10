@@ -25,6 +25,7 @@ def trajectory_to_motive(
     key_root_midi: Optional[int] = None,
     key_mode: Optional[str] = None,
     seed: Optional[int] = None,
+    style: Optional[str] = None,
 ) -> Motive:
     """
     将任意长度轨迹映射为固定长度动机（默认 64 个音）。
@@ -32,9 +33,37 @@ def trajectory_to_motive(
     映射为非线性、不可逆：
     - 按轨迹上的「能量」分布（力度×速度 + 方向变化）做 warp，使输出在能量空间近似等距；
     - 每个输出音由轨迹上一段邻域聚合得到，并加轻微随机扰动，无法从动机精确反推轨迹。
+    style: 'default' | 'lyrical' | 'minimal'，由 conf.MOTIVE_STYLE 提供默认值。
     """
     if not trajectory:
         return []
+
+    sty = (style if style is not None else getattr(conf, "MOTIVE_STYLE", "default")).lower()
+    # 风格对参数与行为的覆盖
+    if sty == "lyrical":
+        target_length = min(target_length, 96)
+        pitch_range = min(pitch_range, 10)
+        base_duration = base_duration * 1.4
+        _shuffle = False
+        _contour_random_scale = 2.0
+        _contour_dir_weight = 1.2
+        _pitch_noise = 1
+        _agg_noise_scale = 0.4
+    elif sty == "minimal":
+        target_length = max(8, target_length // 2)
+        pitch_range = min(pitch_range, 8)
+        base_duration = base_duration * 1.2
+        _shuffle = False
+        _contour_random_scale = 1.5
+        _contour_dir_weight = 0.6
+        _pitch_noise = 0
+        _agg_noise_scale = 0.3
+    else:
+        _shuffle = conf.TRAJ_SHUFFLE_READ_ORDER
+        _contour_random_scale = conf.TRAJ_CONTOUR_RANDOM_SCALE
+        _contour_dir_weight = conf.TRAJ_CONTOUR_DIR_WEIGHT
+        _pitch_noise = conf.TRAJ_PITCH_NOISE_SEMITONES
+        _agg_noise_scale = 1.0
 
     k_root = key_root_midi if key_root_midi is not None else conf.KEY_ROOT_MIDI
     k_mode = key_mode if key_mode is not None else conf.KEY_MODE
@@ -56,7 +85,7 @@ def trajectory_to_motive(
     warp_alpha = _warp_alpha(trajectory)
     trajectory_positions = _warp_to_positions(cdf, target_length, warp_alpha)
     trajectory_positions = _jitter_positions(trajectory_positions, n, rng)
-    if conf.TRAJ_SHUFFLE_READ_ORDER:
+    if _shuffle:
         # 随机排列：旋律不再按轨迹时间顺序采样，同一轨迹每次得到完全不同的音高序列
         perm = list(range(target_length))
         rng.shuffle(perm)
@@ -68,16 +97,19 @@ def trajectory_to_motive(
     ints: List[float] = []
     radius = max(1, n // conf.TRAJ_RADIUS_DIVISOR)
     for pos in trajectory_positions:
-        d, v, i = _aggregate_at_position(trajectory, pos, radius, rng)
+        d, v, i = _aggregate_at_position(trajectory, pos, radius, rng, noise_scale=_agg_noise_scale)
         dirs.append(d)
         vels.append(v)
         ints.append(i)
 
     # 4) 由方向序列做随机主导的累积轮廓 → 音高偏移，再对每个音加独立随机半音偏移
-    pitch_offsets = _contour_with_noise(dirs, pitch_range, rng)
-    noise_range = conf.TRAJ_PITCH_NOISE_SEMITONES
+    pitch_offsets = _contour_with_noise(
+        dirs, pitch_range, rng,
+        random_scale=_contour_random_scale,
+        dir_weight=_contour_dir_weight,
+    )
     for k in range(target_length):
-        pitch_offsets[k] += rng.randint(-noise_range, noise_range)
+        pitch_offsets[k] += rng.randint(-_pitch_noise, _pitch_noise)
 
     # 5) 组装固定长度的动机，并 snap 到调内音
     motive: List[Note] = []
@@ -175,12 +207,12 @@ def _aggregate_at_position(
     pos: float,
     radius: int,
     rng: random.Random,
+    noise_scale: float = 1.0,
 ) -> Tuple[float, float, float]:
     """在轨迹位置 pos 邻域内做加权聚合，并加轻微随机扰动。返回 (direction_norm, velocity, intensity)。"""
     n = len(trajectory)
     idx_lo = max(0, int(pos) - radius)
     idx_hi = min(n - 1, int(pos) + radius)
-    # 高斯式权重：越靠近 pos 权重越大
     sum_d, sum_v, sum_i, sum_w = 0.0, 0.0, 0.0, 0.0
     for i in range(idx_lo, idx_hi + 1):
         dist = abs(i - pos)
@@ -199,20 +231,29 @@ def _aggregate_at_position(
     d = sum_d / sum_w
     v = sum_v / sum_w
     i = sum_i / sum_w
-    # 不可逆：加较大随机扰动，使每次运行听感明显不同
-    d = d + (rng.random() - 0.5) * conf.TRAJ_AGGREGATE_DIR_NOISE
-    v = max(0.0, min(1.0, v + (rng.random() - 0.5) * conf.TRAJ_AGGREGATE_VEL_NOISE))
-    i = max(0.0, min(1.0, i + (rng.random() - 0.5) * conf.TRAJ_AGGREGATE_INT_NOISE))
+    nd = conf.TRAJ_AGGREGATE_DIR_NOISE * noise_scale
+    nv = conf.TRAJ_AGGREGATE_VEL_NOISE * noise_scale
+    ni = conf.TRAJ_AGGREGATE_INT_NOISE * noise_scale
+    d = d + (rng.random() - 0.5) * nd
+    v = max(0.0, min(1.0, v + (rng.random() - 0.5) * nv))
+    i = max(0.0, min(1.0, i + (rng.random() - 0.5) * ni))
     return d, v, i
 
 
-def _contour_with_noise(normalized_dirs: List[float], pitch_range: int, rng: random.Random) -> List[int]:
-    """由方向序列做累积轮廓得到半音偏移；随机步长占主导，使每次旋律走向明显不同。"""
+def _contour_with_noise(
+    normalized_dirs: List[float],
+    pitch_range: int,
+    rng: random.Random,
+    random_scale: Optional[float] = None,
+    dir_weight: Optional[float] = None,
+) -> List[int]:
+    """由方向序列做累积轮廓得到半音偏移；随机步长与方向权重可调。"""
+    rs = random_scale if random_scale is not None else conf.TRAJ_CONTOUR_RANDOM_SCALE
+    dw = dir_weight if dir_weight is not None else conf.TRAJ_CONTOUR_DIR_WEIGHT
     offsets = []
     cum = 0.0
     for d in normalized_dirs:
-        # 随机步长为主(±2)，轨迹方向为轻微偏置，这样音高轮廓每次都会变
-        step = (rng.random() - 0.5) * conf.TRAJ_CONTOUR_RANDOM_SCALE + d * conf.TRAJ_CONTOUR_DIR_WEIGHT
+        step = (rng.random() - 0.5) * rs + d * dw
         cum += step
         cum = max(-pitch_range, min(pitch_range, cum))
         offsets.append(int(round(cum)))
