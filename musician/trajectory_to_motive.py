@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple
 
 from . import conf
 from .models import TrajectoryPoint, Trajectory, Note, Motive
+from .tonality import snap_pitch_to_scale
 
 
 def trajectory_to_motive(
@@ -21,6 +22,8 @@ def trajectory_to_motive(
     min_velocity: float = conf.MOTIVE_MIN_VELOCITY,
     max_velocity: float = conf.MOTIVE_MAX_VELOCITY,
     *,
+    key_root_midi: Optional[int] = None,
+    key_mode: Optional[str] = None,
     seed: Optional[int] = None,
 ) -> Motive:
     """
@@ -33,13 +36,16 @@ def trajectory_to_motive(
     if not trajectory:
         return []
 
+    k_root = key_root_midi if key_root_midi is not None else conf.KEY_ROOT_MIDI
+    k_mode = key_mode if key_mode is not None else conf.KEY_MODE
+
     rng = random.Random(seed)
     n = len(trajectory)
     if n == 1:
-        # 单点：用该点特征生成 target_length 个音，用随机游走引入变化
         return _single_point_motive(
             trajectory[0], target_length, rng,
             root_midi, pitch_range, base_duration, min_velocity, max_velocity,
+            k_root, k_mode,
         )
 
     # 1) 轨迹上每点的「权重」：力度、速度、以及方向变化量（强调转折处）
@@ -73,7 +79,7 @@ def trajectory_to_motive(
     for k in range(target_length):
         pitch_offsets[k] += rng.randint(-noise_range, noise_range)
 
-    # 5) 组装固定长度的动机
+    # 5) 组装固定长度的动机，并 snap 到调内音
     motive: List[Note] = []
     t = 0.0
     for k in range(target_length):
@@ -81,6 +87,7 @@ def trajectory_to_motive(
         vel = min_velocity + ints[k] * (max_velocity - min_velocity)
         vel = max(0.0, min(1.0, vel))
         pitch = int(max(0, min(127, root_midi + pitch_offsets[k])))
+        pitch = snap_pitch_to_scale(pitch, k_root, k_mode)
         motive.append(Note(pitch=pitch, duration=dur, velocity=vel, start=t))
         t += dur
     return motive
@@ -221,8 +228,10 @@ def _single_point_motive(
     base_duration: float,
     min_velocity: float,
     max_velocity: float,
+    key_root_midi: int,
+    key_mode: str,
 ) -> Motive:
-    """轨迹只有一个点时：用该点特征加随机游走生成 target_length 个音。"""
+    """轨迹只有一个点时：用该点特征加随机游走生成 target_length 个音，并 snap 到调内。"""
     d0 = _normalize_direction(point.direction)
     v0 = max(0.0, min(1.0, point.velocity))
     i0 = max(0.0, min(1.0, point.intensity))
@@ -238,6 +247,7 @@ def _single_point_motive(
         vel = min_velocity + i * (max_velocity - min_velocity)
         vel = max(0.0, min(1.0, vel))
         pitch = int(max(0, min(127, root_midi + round(cum))))
+        pitch = snap_pitch_to_scale(pitch, key_root_midi, key_mode)
         motive.append(Note(pitch=pitch, duration=dur, velocity=vel, start=t))
         t += dur
     return motive

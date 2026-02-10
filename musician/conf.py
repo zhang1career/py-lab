@@ -4,6 +4,13 @@
 """
 
 # -----------------------------------------------------------------------------
+# 调性（动机与作曲）
+# -----------------------------------------------------------------------------
+KEY_ROOT_MIDI = 60
+KEY_MODE = 'minor'
+COMPOSE_ARPEGGIO_NOTE_DURATION = 0.35
+COMPOSE_COUNTERPOINT_VELOCITY_RATIO = 0.7
+# -----------------------------------------------------------------------------
 # 动机输出：音高与力度范围、默认长度与节奏
 # -----------------------------------------------------------------------------
 MOTIVE_ROOT_MIDI = 60
@@ -43,13 +50,16 @@ TRAJ_VEL_TO_DUR_OFFSET = 1.5
 # -----------------------------------------------------------------------------
 COMPOSE_DEFAULT_BPM = 120
 COMPOSE_ACCOMPANIMENT_VELOCITY = 0.35
-COMPOSE_CHORD_DURATION = 2.0
+COMPOSE_CHORD_DURATION = 4.0
+COMPOSE_ACCOMPANIMENT_STYLE = 'rhythm_pattern'
+COMPOSE_ADD_COUNTERPOINT = True
+COMPOSE_COUNTERPOINT_STYLE = 'parallel_3rd'
 # -----------------------------------------------------------------------------
 # 播放器：音频与包络
 # -----------------------------------------------------------------------------
 PLAYER_SAMPLE_RATE = 44100
 PLAYER_A4_FREQ = 440.0
-PLAYER_A4_MIDI = 69
+PLAYER_A4_MIDI = 70
 PLAYER_FADE_DIVISOR = 32
 PLAYER_FADE_MAX_SAMPLES = 256
 PLAYER_MASTER_GAIN = 0.8
@@ -67,12 +77,5 @@ DEMO_TRANSPOSE_MIN = -12
 DEMO_TRANSPOSE_MAX = 12
 DEMO_BPM_MIN = 72
 DEMO_BPM_MAX = 108
-# C 大调 I-IV-V-I 块状和弦 (MIDI)
-COMPOSE_CHORDS = [
-    [60, 64, 67],
-    [65, 69, 72],
-    [67, 71, 74],
-    [60, 64, 67],
-]
 PLAYER_SEMITONE_RATIO = 12
 PLAYER_INT16_SCALE = 32767

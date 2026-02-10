@@ -52,10 +52,10 @@
 - [x] 命令行或脚本端到端演示
 
 ### Phase 2：音乐性增强
-- [ ] 调性约束（大调/小调、调号）
-- [ ] 更丰富的伴奏（分解和弦、节奏型）
-- [ ] 简单对位（二声部，如平行三/六度或固定音型）
-- [ ] 乐谱导出（如 MIDI 或 MusicXML）
+- [x] 调性约束（大调/小调、调号）
+- [x] 更丰富的伴奏（分解和弦、节奏型）
+- [x] 简单对位（二声部，如平行三/六度或固定音型）
+- [x] 乐谱导出（MIDI）
 
 ### Phase 3：扩展与优化
 - [ ] 更多轨迹映射策略（不同风格）
@@ -79,7 +79,7 @@ python -m musician
 ### 依赖
 
 - Python 3.8+
-- numpy, simpleaudio（见项目根目录 `requirements.txt`）
+- numpy, simpleaudio, MIDIUtil（见项目根目录 `requirements.txt`）
 
 ---
 
@@ -90,8 +90,11 @@ musician/
 ├── README.md              # 本文件（架构 + 路线图）
 ├── __init__.py
 ├── __main__.py            # 入口与最小演示
+├── conf.py                # 可调参数
 ├── models.py              # Trajectory, Note, Score 等
+├── tonality.py            # 调性、音阶、I-IV-V 和弦（Phase 2）
 ├── trajectory_to_motive.py # 轨迹 → 动机
-├── composer.py            # 动机 + 伴奏 → Score
-└── player.py              # Score → 播放
+├── composer.py            # 动机 + 伴奏 + 对位 → Score
+├── player.py              # Score → 播放
+└── export_midi.py         # Score → MIDI 文件（Phase 2）
 ```

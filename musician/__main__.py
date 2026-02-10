@@ -26,12 +26,22 @@ from musician.models import TrajectoryPoint, Note
 from musician.trajectory_to_motive import trajectory_to_motive
 from musician.composer import compose
 from musician.player import play_score
+from musician.export_midi import export_score_to_midi
 
 
 # -----------------------------------------------------------------------------
 # 控制面板：conf 参数分组与控件规格（名称、说明、类型、范围）
 # -----------------------------------------------------------------------------
 PANEL_GROUPS = [
+    (
+        "调性（动机与作曲）",
+        [
+            ("KEY_ROOT_MIDI", "int", 60, "调性根音 MIDI，如 60=C", 0, 127),
+            ("KEY_MODE", "choice", "major", "大调/小调", "major", "minor"),
+            ("COMPOSE_ARPEGGIO_NOTE_DURATION", "float", 0.25, "分解和弦每音时值（拍）", 0.125, 1.0),
+            ("COMPOSE_COUNTERPOINT_VELOCITY_RATIO", "float", 0.7, "对位力度比例 [0,1]", 0.0, 1.0),
+        ],
+    ),
     (
         "动机输出（音高 / 力度 / 长度 / 节奏）",
         [
@@ -79,6 +89,9 @@ PANEL_GROUPS = [
             ("COMPOSE_DEFAULT_BPM", "int", 120, "默认 BPM", 40, 240),
             ("COMPOSE_ACCOMPANIMENT_VELOCITY", "float", 0.35, "伴奏力度 [0,1]", 0.0, 1.0),
             ("COMPOSE_CHORD_DURATION", "float", 2.0, "每个和弦持续拍数", 0.5, 4.0),
+            ("COMPOSE_ACCOMPANIMENT_STYLE", "choice", "block", "伴奏形态", "block", "arpeggiated", "rhythm_pattern"),
+            ("COMPOSE_ADD_COUNTERPOINT", "bool", False, "添加对位声部"),
+            ("COMPOSE_COUNTERPOINT_STYLE", "choice", "parallel_3rd", "对位风格", "parallel_3rd", "parallel_6th", "ostinato"),
         ],
     ),
     (
@@ -113,6 +126,10 @@ PANEL_GROUPS = [
 # 面板中所有 conf 键名（用于导出到子进程）
 _CONF_KEYS = [key for _title, params in PANEL_GROUPS for key, *_ in params]
 
+# 两列布局：左列组数（按音乐理论：左=素材/动机，右=编曲/播放/演示）
+# 左列：调性、动机输出、轨迹→动机(权重)、轨迹→动机(扰动)；右列：作曲器、播放器、演示
+_PANEL_LEFT_COLUMN_GROUPS = 4
+
 
 def _get_panel_values(vars_map: dict, kinds: dict) -> dict:
     """从面板变量得到键→值的字典（与 _apply_panel_to_conf 同一套转换）。"""
@@ -127,6 +144,8 @@ def _get_panel_values(vars_map: dict, kinds: dict) -> dict:
                 out[key] = int(float(val))
             except (ValueError, TypeError):
                 out[key] = getattr(conf, key, 0)
+        elif kind == "choice":
+            out[key] = str(val) if val else getattr(conf, key, "")
         else:
             try:
                 out[key] = float(val)
@@ -144,7 +163,7 @@ def _apply_panel_to_conf(vars_map: dict, kinds: dict) -> None:
 def _conf_py_key_order() -> list:
     """conf.py 中键的写出顺序（与 PANEL_GROUPS 一致，并补全非面板键）。"""
     keys = [key for _t, params in PANEL_GROUPS for key, *_ in params]
-    for k in ("COMPOSE_CHORDS", "PLAYER_SEMITONE_RATIO", "PLAYER_INT16_SCALE"):
+    for k in ("PLAYER_SEMITONE_RATIO", "PLAYER_INT16_SCALE"):
         if k not in keys:
             keys.append(k)
     return keys
@@ -152,6 +171,8 @@ def _conf_py_key_order() -> list:
 
 def _conf_py_section_for_key(key: str) -> Optional[str]:
     """返回该键所属的 conf.py 小节标题（仅在该节第一个键时返回，用于插入注释）。"""
+    if key == "KEY_ROOT_MIDI":
+        return "# 调性（动机与作曲）"
     if key == "MOTIVE_ROOT_MIDI":
         return "# 动机输出：音高与力度范围、默认长度与节奏"
     if key == "TRAJ_WEIGHT_VELOCITY_OFFSET":
@@ -175,12 +196,8 @@ def _format_conf_value(key: str, value) -> str:
         return str(value)
     if isinstance(value, float):
         return str(value)
-    if isinstance(value, list) and key == "COMPOSE_CHORDS":
-        lines = ["["]
-        for row in value:
-            lines.append("    " + str(row) + ",")
-        lines.append("]")
-        return "\n".join(lines)
+    if isinstance(value, str):
+        return repr(value)
     return repr(value)
 
 
@@ -208,14 +225,7 @@ def _write_conf_py_file(path: str, vars_map: dict, kinds: dict) -> None:
             lines.append("# -----------------------------------------------------------------------------")
             last_section = section
         val = values[key]
-        if key == "COMPOSE_CHORDS":
-            lines.append("# C 大调 I-IV-V-I 块状和弦 (MIDI)")
-            lines.append("COMPOSE_CHORDS = [")
-            for row in val:
-                lines.append("    " + str(row) + ",")
-            lines.append("]")
-        else:
-            lines.append(f"{key} = {_format_conf_value(key, val)}")
+        lines.append(f"{key} = {_format_conf_value(key, val)}")
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 
@@ -269,12 +279,28 @@ def make_trajectory(length):
 
 trajectory = make_trajectory(conf.DEMO_TRAJECTORY_LENGTH)
 seed = (time.time_ns() % (2**32)) ^ (os.getpid() % (2**32))
-motive = trajectory_to_motive(trajectory, target_length=conf.MOTIVE_TARGET_LENGTH, base_duration=conf.MOTIVE_BASE_DURATION, seed=seed)
+motive = trajectory_to_motive(
+    trajectory,
+    target_length=conf.MOTIVE_TARGET_LENGTH,
+    base_duration=conf.MOTIVE_BASE_DURATION,
+    key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
+    key_mode=getattr(conf, "KEY_MODE", "major"),
+    seed=seed,
+)
 rng = random.Random(seed)
 transpose = rng.randint(conf.DEMO_TRANSPOSE_MIN, conf.DEMO_TRANSPOSE_MAX)
 bpm = rng.randint(conf.DEMO_BPM_MIN, conf.DEMO_BPM_MAX)
 motive = [Note(pitch=max(0, min(127, n.pitch + transpose)), duration=n.duration, velocity=n.velocity, start=n.start) for n in motive]
-score = compose(motive, bpm=bpm, add_accompaniment=True)
+score = compose(
+    motive,
+    bpm=bpm,
+    add_accompaniment=True,
+    accompaniment_style=getattr(conf, "COMPOSE_ACCOMPANIMENT_STYLE", "block"),
+    add_counterpoint=getattr(conf, "COMPOSE_ADD_COUNTERPOINT", False),
+    counterpoint_style=getattr(conf, "COMPOSE_COUNTERPOINT_STYLE", "parallel_3rd"),
+    key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
+    key_mode=getattr(conf, "KEY_MODE", "major"),
+)
 play_score(score)
 """
     env = {**os.environ, "MUSICIAN_CONF_FILE": conf_path}
@@ -339,6 +365,16 @@ def _build_group(parent: tk.Widget, title: str, params: list, vars_map: dict, ki
             cb = ttk.Checkbutton(row, variable=var, text="开启")
             cb.pack(side=tk.LEFT)
             vars_map[key] = var
+        elif kind == "choice":
+            options = list(rest)
+            current = getattr(conf, key, default)
+            if current not in options and options:
+                current = options[0]
+            var = tk.StringVar(value=current)
+            # 用单选按钮替代下拉框，避免 macOS 上 OptionMenu/Combobox 选中后不显示文字的问题
+            for opt in options:
+                ttk.Radiobutton(row, variable=var, value=opt, text=opt).pack(side=tk.LEFT, padx=(0, 8))
+            vars_map[key] = var
         elif kind == "int":
             lo, hi = rest[0], rest[1]
             var = tk.StringVar(value=str(getattr(conf, key, default)))
@@ -359,22 +395,39 @@ def main() -> None:
     播放结束后控制面板不关闭，程序保持运行，直至用户关闭窗口。"""
     root = tk.Tk()
     root.title("Musician 参数控制面板")
-    root.geometry("720x560")
-    root.minsize(500, 400)
+    root.geometry("960x560")
+    root.minsize(700, 400)
 
-    # 可滚动内容
+    # 强制 ttk 按钮文字颜色，缓解 macOS 上按钮未点击时文字不显示的问题
+    try:
+        ttk.Style().configure("TButton", foreground="black")
+    except Exception:
+        pass
+
+    # 可滚动内容，内部分为左右两列（左：调性/动机/轨迹；右：作曲/播放/演示）
     canvas = tk.Canvas(root)
     scrollbar = ttk.Scrollbar(root)
     scrollable = ttk.Frame(canvas)
-    scrollable.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-    canvas.create_window((0, 0), window=scrollable, anchor=tk.NW)
+    def _on_scrollable_configure(e):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+    scrollable.bind("<Configure>", _on_scrollable_configure)
+    cwin = canvas.create_window((0, 0), window=scrollable, anchor=tk.NW)
+    def _on_canvas_configure(e):
+        canvas.itemconfig(cwin, width=e.width)
+    canvas.bind("<Configure>", _on_canvas_configure)
     canvas.configure(yscrollcommand=scrollbar.set)
     scrollbar.configure(command=canvas.yview)
 
+    left_col = ttk.Frame(scrollable)
+    right_col = ttk.Frame(scrollable)
+    left_col.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 8))
+    right_col.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
+
     vars_map: dict = {}
     kinds: dict = {}
-    for title, params in PANEL_GROUPS:
-        _build_group(scrollable, title, params, vars_map, kinds)
+    for i, (title, params) in enumerate(PANEL_GROUPS):
+        parent = left_col if i < _PANEL_LEFT_COLUMN_GROUPS else right_col
+        _build_group(parent, title, params, vars_map, kinds)
 
     # 面板参数防抖写回 conf.py
     _conf_py_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "conf.py")
@@ -454,8 +507,51 @@ def main() -> None:
         _apply_panel_to_conf(vars_map, kinds)
         threading.Thread(target=_generate_and_play, args=(root, status_var), daemon=True).start()
 
-    btn = ttk.Button(bottom, text="生成并播放", command=on_play)
-    btn.pack(side=tk.RIGHT)
+    def on_export_midi() -> None:
+        def _do_export() -> None:
+            root.after(0, lambda: status_var.set("正在生成并导出 MIDI…"))
+            try:
+                _apply_panel_to_conf(vars_map, kinds)
+                trajectory = make_demo_trajectory(conf.DEMO_TRAJECTORY_LENGTH)
+                seed = (time.time_ns() % (2**32)) ^ (os.getpid() % (2**32))
+                motive = trajectory_to_motive(
+                    trajectory,
+                    target_length=conf.MOTIVE_TARGET_LENGTH,
+                    base_duration=conf.MOTIVE_BASE_DURATION,
+                    key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
+                    key_mode=getattr(conf, "KEY_MODE", "major"),
+                    seed=seed,
+                )
+                import random
+                rng = random.Random(seed)
+                transpose = rng.randint(conf.DEMO_TRANSPOSE_MIN, conf.DEMO_TRANSPOSE_MAX)
+                bpm = rng.randint(conf.DEMO_BPM_MIN, conf.DEMO_BPM_MAX)
+                motive = [Note(pitch=max(0, min(127, n.pitch + transpose)), duration=n.duration, velocity=n.velocity, start=n.start) for n in motive]
+                score = compose(
+                    motive,
+                    bpm=bpm,
+                    add_accompaniment=True,
+                    accompaniment_style=getattr(conf, "COMPOSE_ACCOMPANIMENT_STYLE", "block"),
+                    add_counterpoint=getattr(conf, "COMPOSE_ADD_COUNTERPOINT", False),
+                    counterpoint_style=getattr(conf, "COMPOSE_COUNTERPOINT_STYLE", "parallel_3rd"),
+                    key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
+                    key_mode=getattr(conf, "KEY_MODE", "major"),
+                )
+                path = os.path.join(os.getcwd(), "musician_export.mid")
+                export_score_to_midi(score, path)
+                root.after(0, lambda: status_var.set(f"已导出: {path}"))
+            except Exception as e:
+                root.after(0, lambda: status_var.set(f"导出失败: {e}"))
+
+        threading.Thread(target=_do_export, daemon=True).start()
+
+    # macOS 上 ttk 按钮文字常不显示，底部两个键用 tk.Button 保证可见
+    if sys.platform == "darwin":
+        tk.Button(bottom, text="导出 MIDI", command=on_export_midi).pack(side=tk.RIGHT, padx=(0, 8))
+        tk.Button(bottom, text="生成并播放", command=on_play).pack(side=tk.RIGHT)
+    else:
+        ttk.Button(bottom, text="导出 MIDI", command=on_export_midi).pack(side=tk.RIGHT, padx=(0, 8))
+        ttk.Button(bottom, text="生成并播放", command=on_play).pack(side=tk.RIGHT)
 
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)

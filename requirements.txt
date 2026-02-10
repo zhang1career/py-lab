@@ -1,3 +1,4 @@
 numpy>=1.20
 simpleaudio>=1.0.4
+MIDIUtil>=1.2
 pytest>=7.0
