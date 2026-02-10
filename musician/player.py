@@ -8,14 +8,15 @@ try:
 except ImportError:
     sa = None
 
+from . import conf
 from .models import Score, Note
 
 
 def midi_to_freq(midi: int) -> float:
-    return 440.0 * (2.0 ** ((midi - 69) / 12.0))
+    return conf.PLAYER_A4_FREQ * (2.0 ** ((midi - conf.PLAYER_A4_MIDI) / conf.PLAYER_SEMITONE_RATIO))
 
 
-def play_score(score: Score, sample_rate: int = 44100) -> None:
+def play_score(score: Score, sample_rate: int = conf.PLAYER_SAMPLE_RATE) -> None:
     """将乐谱按拍转换为时间，混合所有音轨后播放。"""
     if sa is None:
         raise RuntimeError("需要安装 simpleaudio: pip install simpleaudio")
@@ -38,15 +39,14 @@ def play_score(score: Score, sample_rate: int = 44100) -> None:
             # 简单正弦 + 力度
             wave = np.sin(2 * np.pi * freq * t) * note.velocity
             # 简单包络（前后淡入淡出减少咔嗒）
-            fade = min(dur_samples // 32, 256)
+            fade = min(dur_samples // conf.PLAYER_FADE_DIVISOR, conf.PLAYER_FADE_MAX_SAMPLES)
             if fade > 0:
                 wave[:fade] *= np.linspace(0, 1, fade)
                 wave[-fade:] *= np.linspace(1, 0, fade)
-            buffer[start_sample : start_sample + dur_samples] += wave
-    # 归一化防止削波
+            buffer[start_sample: start_sample + dur_samples] += wave
     peak = np.max(np.abs(buffer))
     if peak > 0:
-        buffer = buffer / peak * 0.8
-    audio = (buffer * 32767).astype(np.int16)
+        buffer = buffer / peak * conf.PLAYER_MASTER_GAIN
+    audio = (buffer * conf.PLAYER_INT16_SCALE).astype(np.int16)
     play_obj = sa.play_buffer(audio, 1, 2, sample_rate)
     play_obj.wait_done()

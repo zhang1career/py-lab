@@ -1,14 +1,15 @@
 """
 作曲器：以动机为主题，添加伴奏（和声）、可选对位，生成完整乐谱。
 """
+from . import conf
 from .models import Motive, Note, Score, Track
 
 
 def compose(
     motive: Motive,
-    bpm: float = 120,
+    bpm: float = conf.COMPOSE_DEFAULT_BPM,
     add_accompaniment: bool = True,
-    accompaniment_velocity: float = 0.35,
+    accompaniment_velocity: float = conf.COMPOSE_ACCOMPANIMENT_VELOCITY,
 ) -> Score:
     """
     由动机生成乐谱。
@@ -33,15 +34,8 @@ def _make_accompaniment(motive: Motive, velocity: float) -> list[Note]:
     if not motive:
         return []
     end_time = max(n.start + n.duration for n in motive)
-    # 每 2 拍一个和弦
-    chord_duration = 2.0
-    # C 大调：C4=60, E4=64, G4=67; F4=65,A4=69,C5=72; G4=67,B4=71,D5=74
-    chords = [
-        [60, 64, 67],   # C
-        [65, 69, 72],   # F
-        [67, 71, 74],   # G
-        [60, 64, 67],   # C
-    ]
+    chord_duration = conf.COMPOSE_CHORD_DURATION
+    chords = conf.COMPOSE_CHORDS
     notes: list[Note] = []
     t = 0.0
     i = 0
