@@ -9,17 +9,17 @@
 KEY_ROOT_MIDI = 60
 KEY_MODE = 'major'
 COMPOSE_ARPEGGIO_NOTE_DURATION = 0.35
-COMPOSE_COUNTERPOINT_VELOCITY_RATIO = 0.7
+COMPOSE_COUNTERPOINT_VELOCITY_RATIO = 0.15
 # -----------------------------------------------------------------------------
 # 动机输出：音高与力度范围、默认长度与节奏
 # -----------------------------------------------------------------------------
 MOTIVE_ROOT_MIDI = 60
 MOTIVE_PITCH_RANGE = 12
-MOTIVE_TARGET_LENGTH = 64
-MOTIVE_BASE_DURATION = 0.25
-MOTIVE_MIN_VELOCITY = 0.3
-MOTIVE_MAX_VELOCITY = 0.95
-MOTIVE_STYLE = 'default'
+MOTIVE_TARGET_LENGTH = 16
+MOTIVE_BASE_DURATION = 0.5
+MOTIVE_MIN_VELOCITY = 0.95
+MOTIVE_MAX_VELOCITY = 1.0
+MOTIVE_STYLE = 'lyrical'
 # -----------------------------------------------------------------------------
 # 轨迹→动机：权重与 warp
 # -----------------------------------------------------------------------------
@@ -30,8 +30,8 @@ TRAJ_WARP_ALPHA_LO = 0.85
 TRAJ_WARP_ALPHA_SPAN = 0.3
 TRAJ_RADIUS_DIVISOR = 16
 TRAJ_JITTER_SCALE_FACTOR = 0.08
-TRAJ_SHUFFLE_READ_ORDER = True
-TRAJ_PITCH_NOISE_SEMITONES = 3
+TRAJ_SHUFFLE_READ_ORDER = False
+TRAJ_PITCH_NOISE_SEMITONES = 0
 TRAJ_INVERSE_CDF_MID = 0.5
 # -----------------------------------------------------------------------------
 # 轨迹→动机：随机扰动（方向 / 速度 / 力度 / 轮廓）
@@ -39,23 +39,42 @@ TRAJ_INVERSE_CDF_MID = 0.5
 TRAJ_AGGREGATE_DIR_NOISE = 1.8
 TRAJ_AGGREGATE_VEL_NOISE = 0.55
 TRAJ_AGGREGATE_INT_NOISE = 0.55
-TRAJ_CONTOUR_RANDOM_SCALE = 5.0
+TRAJ_CONTOUR_RANDOM_SCALE = 3.0
 TRAJ_CONTOUR_DIR_WEIGHT = 0.4
 TRAJ_SINGLE_STEP_NOISE = 2.2
 TRAJ_SINGLE_DIR_WEIGHT = 0.5
 TRAJ_SINGLE_VEL_NOISE = 0.3
 TRAJ_SINGLE_INT_NOISE = 0.5
-TRAJ_VEL_TO_DUR_OFFSET = 1.5
+TRAJ_VEL_TO_DUR_OFFSET = 2.0
 # -----------------------------------------------------------------------------
 # 作曲器：伴奏与和声
 # -----------------------------------------------------------------------------
 COMPOSE_DEFAULT_BPM = 120
-COMPOSE_ADD_ACCOMPANIMENT = False
-COMPOSE_ACCOMPANIMENT_VELOCITY = 0.35
+COMPOSE_ADD_ACCOMPANIMENT = True
+COMPOSE_ACCOMPANIMENT_VELOCITY = 0.25
 COMPOSE_CHORD_DURATION = 4.0
-COMPOSE_ACCOMPANIMENT_STYLE = 'block'
-COMPOSE_ADD_COUNTERPOINT = False
-COMPOSE_COUNTERPOINT_STYLE = 'parallel_3rd'
+COMPOSE_ACCOMPANIMENT_STYLE = 'rhythm_pattern'
+COMPOSE_ADD_COUNTERPOINT = True
+COMPOSE_COUNTERPOINT_STYLE = 'secondary_melody'
+# -----------------------------------------------------------------------------
+# 作曲器：叠加层（Pad / 低音 / 打击 / 装饰）
+# -----------------------------------------------------------------------------
+COMPOSE_ADD_PAD = True
+COMPOSE_PAD_VELOCITY = 0.06
+COMPOSE_PAD_CHORD_DURATION = 4.0
+COMPOSE_PAD_OCTAVE_OFFSET = 1
+COMPOSE_ADD_BASS = True
+COMPOSE_BASS_VELOCITY = 0.05
+COMPOSE_BASS_STYLE = 'root_fifth'
+COMPOSE_BASS_OCTAVE_OFFSET = -1
+COMPOSE_ADD_PERCUSSION = True
+COMPOSE_PERCUSSION_VELOCITY = 0.1
+COMPOSE_PERCUSSION_PATTERN = 'simple_44'
+COMPOSE_PERCUSSION_PLAYBACK = 'gm'
+COMPOSE_ADD_ORNAMENTATION = True
+COMPOSE_ORNAMENT_VELOCITY_RATIO = 0.12
+COMPOSE_ORNAMENT_DENSITY = 0.3
+COMPOSE_ORNAMENT_MAX_DURATION = 0.25
 TIME_SIGNATURE_NUMERATOR = 4
 TIME_SIGNATURE_DENOMINATOR = 4
 # -----------------------------------------------------------------------------

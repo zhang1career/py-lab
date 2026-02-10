@@ -1,12 +1,19 @@
 """
-作曲器：以动机为主题，添加伴奏（和声）、可选对位，生成完整乐谱。
+作曲器：以动机为主题，添加伴奏（和声）、可选对位、Pad、低音、打击、装饰，生成完整乐谱。
 """
+import random
 from typing import List, Optional
 
 from . import conf
 from .models import Motive, Note, Score, Track
-from .tonality import get_progression_chords, interval_in_scale_steps, get_scale
+from .tonality import get_progression_chords, interval_in_scale_steps, get_scale, snap_pitch_to_scale
 from .groove import apply_groove
+
+# GM 鼓键
+GM_KICK = 36
+GM_SNARE = 38
+# C2 for percussion when playback mode is c2
+PERCUSSION_C2_MIDI = 36
 
 
 def compose(
@@ -17,6 +24,21 @@ def compose(
     accompaniment_style: str = conf.COMPOSE_ACCOMPANIMENT_STYLE,
     add_counterpoint: bool = conf.COMPOSE_ADD_COUNTERPOINT,
     counterpoint_style: str = conf.COMPOSE_COUNTERPOINT_STYLE,
+    add_pad: bool = getattr(conf, "COMPOSE_ADD_PAD", False),
+    pad_velocity: float = getattr(conf, "COMPOSE_PAD_VELOCITY", 0.25),
+    pad_chord_duration: float = getattr(conf, "COMPOSE_PAD_CHORD_DURATION", 4.0),
+    pad_octave_offset: int = getattr(conf, "COMPOSE_PAD_OCTAVE_OFFSET", 1),
+    add_bass: bool = getattr(conf, "COMPOSE_ADD_BASS", False),
+    bass_velocity: float = getattr(conf, "COMPOSE_BASS_VELOCITY", 0.4),
+    bass_style: str = getattr(conf, "COMPOSE_BASS_STYLE", "root_only"),
+    bass_octave_offset: int = getattr(conf, "COMPOSE_BASS_OCTAVE_OFFSET", -1),
+    add_percussion: bool = getattr(conf, "COMPOSE_ADD_PERCUSSION", False),
+    percussion_velocity: float = getattr(conf, "COMPOSE_PERCUSSION_VELOCITY", 0.5),
+    percussion_pattern: str = getattr(conf, "COMPOSE_PERCUSSION_PATTERN", "simple_44"),
+    add_ornamentation: bool = getattr(conf, "COMPOSE_ADD_ORNAMENTATION", False),
+    ornament_velocity_ratio: float = getattr(conf, "COMPOSE_ORNAMENT_VELOCITY_RATIO", 0.6),
+    ornament_density: float = getattr(conf, "COMPOSE_ORNAMENT_DENSITY", 0.3),
+    ornament_max_duration: float = getattr(conf, "COMPOSE_ORNAMENT_MAX_DURATION", 0.25),
     key_root_midi: Optional[int] = None,
     key_mode: Optional[str] = None,
 ) -> Score:
@@ -24,7 +46,8 @@ def compose(
     由动机生成乐谱。
     - 动机轨：原样保留。
     - 伴奏轨：按调性 I-IV-V-I 生成，形态可选 block / arpeggiated / rhythm_pattern。
-    - 对位轨（可选）：平行三度/六度或固定音型。
+    - 对位/副旋律轨（可选）：平行三度/六度、固定音型或副旋律（应答句）。
+    - Pad / 低音 / 打击 / 装饰轨（可选）。
     """
     k_root = key_root_midi if key_root_midi is not None else conf.KEY_ROOT_MIDI
     k_mode = key_mode if key_mode is not None else conf.KEY_MODE
@@ -39,9 +62,27 @@ def compose(
         accomp = _make_accompaniment(motive, chords, accompaniment_velocity, accompaniment_style)
         tracks.append(Track(name="accompaniment", notes=accomp))
 
+    if add_bass and motive:
+        bass_notes = _make_bass(motive, chords, bass_velocity, bass_style, bass_octave_offset, k_root)
+        tracks.append(Track(name="bass", notes=bass_notes))
+
+    if add_pad and motive:
+        pad_notes = _make_pad(motive, chords, pad_velocity, pad_chord_duration, pad_octave_offset, k_root)
+        tracks.append(Track(name="pad", notes=pad_notes))
+
     if add_counterpoint and motive:
         cpt = _make_counterpoint(motive, k_root, k_mode, counterpoint_style)
         tracks.append(Track(name="counterpoint", notes=cpt))
+
+    if add_ornamentation and motive:
+        ornament_notes = _make_ornamentation(
+            motive, k_root, k_mode, ornament_velocity_ratio, ornament_density, ornament_max_duration
+        )
+        tracks.append(Track(name="ornamentation", notes=ornament_notes))
+
+    if add_percussion and motive:
+        perc_notes = _make_percussion(motive, percussion_velocity, percussion_pattern)
+        tracks.append(Track(name="percussion", notes=perc_notes))
 
     num = getattr(conf, "TIME_SIGNATURE_NUMERATOR", 4)
     denom = getattr(conf, "TIME_SIGNATURE_DENOMINATOR", 4)
@@ -138,7 +179,7 @@ def _make_counterpoint(
     mode: str,
     style: str,
 ) -> list[Note]:
-    """对位声部：平行三度/六度或固定音型。"""
+    """对位声部：平行三度/六度、固定音型或副旋律（应答句）。"""
     ratio = conf.COMPOSE_COUNTERPOINT_VELOCITY_RATIO
     if style == "parallel_3rd":
         return _counterpoint_parallel(motive, root_midi, mode, steps=2, velocity_ratio=ratio)
@@ -146,6 +187,8 @@ def _make_counterpoint(
         return _counterpoint_parallel(motive, root_midi, mode, steps=5, velocity_ratio=ratio)
     if style == "ostinato":
         return _counterpoint_ostinato(motive, root_midi, mode, velocity_ratio=ratio)
+    if style == "secondary_melody":
+        return _counterpoint_secondary_melody(motive, root_midi, mode, velocity_ratio=ratio)
     return _counterpoint_parallel(motive, root_midi, mode, steps=2, velocity_ratio=ratio)
 
 
@@ -190,4 +233,131 @@ def _counterpoint_ostinato(
         notes.append(Note(pitch=pitch, duration=note_dur, velocity=velocity_ratio, start=t))
         t += note_dur
         idx += 1
+    return notes
+
+
+def _counterpoint_secondary_melody(
+    motive: Motive,
+    root_midi: int,
+    mode: str,
+    velocity_ratio: float,
+) -> list[Note]:
+    """副旋律（应答句）：动机延迟 1 小节，时值略拉长、力度略弱，形成呼应。"""
+    delay_beats = 4.0  # 1 小节
+    duration_factor = 1.4
+    notes: list[Note] = []
+    for n in motive:
+        start = n.start + delay_beats
+        dur = min(n.duration * duration_factor, 2.0)
+        vel = max(0.0, min(1.0, n.velocity * velocity_ratio * 0.9))
+        pitch = snap_pitch_to_scale(n.pitch, root_midi, mode)
+        notes.append(Note(pitch=pitch, duration=dur, velocity=vel, start=start))
+    return notes
+
+
+def _make_pad(
+    motive: Motive,
+    chords: List[List[int]],
+    velocity: float,
+    chord_duration: float,
+    octave_offset: int,
+    root_midi: int,
+) -> list[Note]:
+    """Pad：I-IV-V-I 长音铺底，每和弦三音持续 chord_duration 拍，音区根音上方 octave_offset 八度。"""
+    if not motive:
+        return []
+    end_time = max(n.start + n.duration for n in motive)
+    notes: list[Note] = []
+    t = 0.0
+    i = 0
+    while t < end_time:
+        triad = chords[i % len(chords)]
+        # 三音（triad[1]）移到根音上方 octave_offset 八度
+        pitch = root_midi + 12 * octave_offset + (triad[1] - root_midi) % 12
+        pitch = max(0, min(127, pitch))
+        notes.append(Note(pitch=pitch, duration=chord_duration, velocity=velocity, start=t))
+        t += chord_duration
+        i += 1
+    return notes
+
+
+def _make_bass(
+    motive: Motive,
+    chords: List[List[int]],
+    velocity: float,
+    style: str,
+    octave_offset: int,
+    root_midi: int,
+) -> list[Note]:
+    """低音线：按和弦进行每 chord_duration 根音（及可选五音）。"""
+    if not motive:
+        return []
+    end_time = max(n.start + n.duration for n in motive)
+    chord_duration = getattr(conf, "COMPOSE_CHORD_DURATION", 4.0)
+    notes: list[Note] = []
+    t = 0.0
+    i = 0
+    while t < end_time:
+        triad = chords[i % len(chords)]
+        bass_pitch = max(0, min(127, triad[0] + 12 * octave_offset))
+        if style == "root_fifth":
+            fifth_pitch = max(0, min(127, triad[2] + 12 * octave_offset))
+            half = chord_duration / 2
+            notes.append(Note(pitch=bass_pitch, duration=half, velocity=velocity, start=t))
+            notes.append(Note(pitch=fifth_pitch, duration=half, velocity=velocity * 0.9, start=t + half))
+        else:
+            notes.append(Note(pitch=bass_pitch, duration=chord_duration, velocity=velocity, start=t))
+        t += chord_duration
+        i += 1
+    return notes
+
+
+def _make_percussion(
+    motive: Motive,
+    velocity: float,
+    pattern: str,
+) -> list[Note]:
+    """打击轨：simple_44 为 4/4 第 1、3 拍 kick，第 2、4 拍 snare。"""
+    if not motive:
+        return []
+    end_time = max(n.start + n.duration for n in motive)
+    beats_per_bar = getattr(conf, "BEATS_PER_BAR", 4)
+    notes: list[Note] = []
+    t = 0.0
+    step = 0.5
+    while t < end_time:
+        bar_pos = t % beats_per_bar
+        if pattern == "simple_44":
+            if bar_pos < 0.05 or (1.95 < bar_pos < 2.05):
+                notes.append(Note(pitch=GM_KICK, duration=0.25, velocity=velocity, start=t))
+            elif 0.95 < bar_pos < 1.05 or 2.95 < bar_pos < 3.05:
+                notes.append(Note(pitch=GM_SNARE, duration=0.25, velocity=velocity * 0.85, start=t))
+        t += step
+    return notes
+
+
+def _make_ornamentation(
+    motive: Motive,
+    root_midi: int,
+    mode: str,
+    velocity_ratio: float,
+    density: float,
+    max_duration: float,
+) -> list[Note]:
+    """装饰：在部分动机音后插入短装饰音（调内上下二度）。"""
+    if not motive:
+        return []
+    notes: list[Note] = []
+    scale = get_scale(mode)
+    for i, n in enumerate(motive):
+        if random.Random(i).random() >= density:
+            continue
+        # 在音结束后插入短音，音高为原音上方或下方一个音阶音
+        start = n.start + n.duration
+        dur = min(max_duration, 0.25)
+        vel = max(0.0, min(1.0, n.velocity * velocity_ratio))
+        up = interval_in_scale_steps(root_midi, mode, n.pitch, 1)
+        down = interval_in_scale_steps(root_midi, mode, n.pitch, -1)
+        pitch = up if (i % 2 == 0) else down
+        notes.append(Note(pitch=pitch, duration=dur, velocity=vel, start=start))
     return notes

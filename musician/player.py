@@ -91,7 +91,9 @@ def play_score(score: Score, sample_rate: int = conf.PLAYER_SAMPLE_RATE, use_rev
         return
     n_samples = int(total_sec * sample_rate)
     buffer = np.zeros(n_samples, dtype=np.float32)
+    percussion_playback = getattr(conf, "COMPOSE_PERCUSSION_PLAYBACK", "gm")
     for track in score.tracks:
+        use_c2 = track.name == "percussion" and percussion_playback == "c2"
         for note in track.notes:
             start_sec = note.start * beat_sec
             dur_sec = note.duration * beat_sec
@@ -99,7 +101,8 @@ def play_score(score: Score, sample_rate: int = conf.PLAYER_SAMPLE_RATE, use_rev
             dur_samples = int(dur_sec * sample_rate)
             if start_sample < 0 or start_sample + dur_samples > n_samples:
                 continue
-            freq = midi_to_freq(note.pitch)
+            pitch = 36 if use_c2 else note.pitch
+            freq = midi_to_freq(pitch)
             t = np.linspace(0, dur_sec, dur_samples, False)
             wave = _tone_with_overtones(freq, t, 1.0)
             env = _adsr_envelope(dur_samples, sample_rate, note.velocity)

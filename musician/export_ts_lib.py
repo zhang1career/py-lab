@@ -45,11 +45,28 @@ def _defaults_dict() -> dict[str, Any]:
         "TRAJ_SINGLE_INT_NOISE": conf.TRAJ_SINGLE_INT_NOISE,
         "TRAJ_VEL_TO_DUR_OFFSET": conf.TRAJ_VEL_TO_DUR_OFFSET,
         "COMPOSE_DEFAULT_BPM": conf.COMPOSE_DEFAULT_BPM,
+        "COMPOSE_ADD_ACCOMPANIMENT": getattr(conf, "COMPOSE_ADD_ACCOMPANIMENT", True),
         "COMPOSE_ACCOMPANIMENT_VELOCITY": conf.COMPOSE_ACCOMPANIMENT_VELOCITY,
         "COMPOSE_CHORD_DURATION": conf.COMPOSE_CHORD_DURATION,
         "COMPOSE_ACCOMPANIMENT_STYLE": conf.COMPOSE_ACCOMPANIMENT_STYLE,
         "COMPOSE_ADD_COUNTERPOINT": conf.COMPOSE_ADD_COUNTERPOINT,
         "COMPOSE_COUNTERPOINT_STYLE": conf.COMPOSE_COUNTERPOINT_STYLE,
+        "COMPOSE_ADD_PAD": getattr(conf, "COMPOSE_ADD_PAD", False),
+        "COMPOSE_PAD_VELOCITY": getattr(conf, "COMPOSE_PAD_VELOCITY", 0.25),
+        "COMPOSE_PAD_CHORD_DURATION": getattr(conf, "COMPOSE_PAD_CHORD_DURATION", 4.0),
+        "COMPOSE_PAD_OCTAVE_OFFSET": getattr(conf, "COMPOSE_PAD_OCTAVE_OFFSET", 1),
+        "COMPOSE_ADD_BASS": getattr(conf, "COMPOSE_ADD_BASS", False),
+        "COMPOSE_BASS_VELOCITY": getattr(conf, "COMPOSE_BASS_VELOCITY", 0.4),
+        "COMPOSE_BASS_STYLE": getattr(conf, "COMPOSE_BASS_STYLE", "root_only"),
+        "COMPOSE_BASS_OCTAVE_OFFSET": getattr(conf, "COMPOSE_BASS_OCTAVE_OFFSET", -1),
+        "COMPOSE_ADD_PERCUSSION": getattr(conf, "COMPOSE_ADD_PERCUSSION", False),
+        "COMPOSE_PERCUSSION_VELOCITY": getattr(conf, "COMPOSE_PERCUSSION_VELOCITY", 0.5),
+        "COMPOSE_PERCUSSION_PATTERN": getattr(conf, "COMPOSE_PERCUSSION_PATTERN", "simple_44"),
+        "COMPOSE_PERCUSSION_PLAYBACK": getattr(conf, "COMPOSE_PERCUSSION_PLAYBACK", "gm"),
+        "COMPOSE_ADD_ORNAMENTATION": getattr(conf, "COMPOSE_ADD_ORNAMENTATION", False),
+        "COMPOSE_ORNAMENT_VELOCITY_RATIO": getattr(conf, "COMPOSE_ORNAMENT_VELOCITY_RATIO", 0.6),
+        "COMPOSE_ORNAMENT_DENSITY": getattr(conf, "COMPOSE_ORNAMENT_DENSITY", 0.3),
+        "COMPOSE_ORNAMENT_MAX_DURATION": getattr(conf, "COMPOSE_ORNAMENT_MAX_DURATION", 0.25),
         "TIME_SIGNATURE_NUMERATOR": conf.TIME_SIGNATURE_NUMERATOR,
         "TIME_SIGNATURE_DENOMINATOR": conf.TIME_SIGNATURE_DENOMINATOR,
         "BEATS_PER_BAR": conf.BEATS_PER_BAR,
@@ -526,13 +543,16 @@ export function trajectoryToMotive(
 
     # ---------- composer.ts ----------
     composer_ts = r'''/**
- * Compose: motive + accompaniment + optional counterpoint → Score. Port from musician.composer.
+ * Compose: motive + accompaniment + optional counterpoint + pad/bass/percussion/ornament → Score. Port from musician.composer.
  */
 
 import type { Note, Score, Track } from "./types";
 import type { Params } from "./defaults";
 import { DEFAULT_PARAMS } from "./defaults";
-import { getProgressionChords, intervalInScaleSteps, getScale } from "./tonality";
+import { getProgressionChords, intervalInScaleSteps, getScale, snapPitchToScale } from "./tonality";
+
+const GM_KICK = 36;
+const GM_SNARE = 38;
 
 function getP<T>(p: Params, key: keyof typeof DEFAULT_PARAMS, fallback: T): T {
   const v = p[key];
@@ -636,27 +656,159 @@ function counterpointOstinato(
   return notes;
 }
 
+function counterpointSecondaryMelody(
+  motive: Note[],
+  rootMidi: number,
+  mode: string,
+  velocityRatio: number
+): Note[] {
+  const delayBeats = 4;
+  const durationFactor = 1.4;
+  const notes: Note[] = [];
+  for (const n of motive) {
+    const start = n.start + delayBeats;
+    const dur = Math.min(n.duration * durationFactor, 2);
+    const vel = Math.max(0, Math.min(1, n.velocity * velocityRatio * 0.9));
+    const pitch = snapPitchToScale(n.pitch, rootMidi, mode);
+    notes.push({ pitch, duration: dur, velocity: vel, start });
+  }
+  return notes;
+}
+
+function makePad(
+  motive: Note[],
+  chords: number[][],
+  velocity: number,
+  chordDuration: number,
+  octaveOffset: number,
+  rootMidi: number
+): Note[] {
+  if (!motive.length) return [];
+  const endTime = Math.max(...motive.map((n) => n.start + n.duration));
+  const notes: Note[] = [];
+  let t = 0;
+  let i = 0;
+  while (t < endTime) {
+    const triad = chords[i % chords.length]!;
+    const pitch = Math.max(0, Math.min(127, rootMidi + 12 * octaveOffset + ((triad[1]! - rootMidi) % 12 + 12) % 12));
+    notes.push({ pitch, duration: chordDuration, velocity, start: t });
+    t += chordDuration;
+    i++;
+  }
+  return notes;
+}
+
+function makeBass(
+  motive: Note[],
+  chords: number[][],
+  velocity: number,
+  style: string,
+  octaveOffset: number,
+  chordDuration: number
+): Note[] {
+  if (!motive.length) return [];
+  const endTime = Math.max(...motive.map((n) => n.start + n.duration));
+  const notes: Note[] = [];
+  let t = 0;
+  let i = 0;
+  while (t < endTime) {
+    const triad = chords[i % chords.length]!;
+    const bassPitch = Math.max(0, Math.min(127, triad[0]! + 12 * octaveOffset));
+    if (style === "root_fifth") {
+      const fifthPitch = Math.max(0, Math.min(127, triad[2]! + 12 * octaveOffset));
+      const half = chordDuration / 2;
+      notes.push({ pitch: bassPitch, duration: half, velocity, start: t });
+      notes.push({ pitch: fifthPitch, duration: half, velocity: velocity * 0.9, start: t + half });
+    } else {
+      notes.push({ pitch: bassPitch, duration: chordDuration, velocity, start: t });
+    }
+    t += chordDuration;
+    i++;
+  }
+  return notes;
+}
+
+function makePercussion(motive: Note[], velocity: number, pattern: string, beatsPerBar: number): Note[] {
+  if (!motive.length) return [];
+  const endTime = Math.max(...motive.map((n) => n.start + n.duration));
+  const notes: Note[] = [];
+  let t = 0;
+  const step = 0.5;
+  while (t < endTime) {
+    const barPos = t % beatsPerBar;
+    if (pattern === "simple_44") {
+      if (barPos < 0.05 || (barPos >= 1.95 && barPos < 2.05)) {
+        notes.push({ pitch: GM_KICK, duration: 0.25, velocity, start: t });
+      } else if ((barPos >= 0.95 && barPos < 1.05) || (barPos >= 2.95 && barPos < 3.05)) {
+        notes.push({ pitch: GM_SNARE, duration: 0.25, velocity: velocity * 0.85, start: t });
+      }
+    }
+    t += step;
+  }
+  return notes;
+}
+
+function makeOrnamentation(
+  motive: Note[],
+  rootMidi: number,
+  mode: string,
+  velocityRatio: number,
+  density: number,
+  maxDuration: number
+): Note[] {
+  const notes: Note[] = [];
+  for (let i = 0; i < motive.length; i++) {
+    const n = motive[i]!;
+    if (Math.random() >= density) continue;
+    const start = n.start + n.duration;
+    const dur = Math.min(maxDuration, 0.25);
+    const vel = Math.max(0, Math.min(1, n.velocity * velocityRatio));
+    const pitch = (i % 2 === 0)
+      ? intervalInScaleSteps(rootMidi, mode, n.pitch, 1)
+      : intervalInScaleSteps(rootMidi, mode, n.pitch, -1);
+    notes.push({ pitch, duration: dur, velocity: vel, start });
+  }
+  return notes;
+}
+
 export function compose(motive: Note[], params: Params = {}): Score {
   const p = { ...DEFAULT_PARAMS, ...params };
   const keyRoot = getP(p, "KEY_ROOT_MIDI", DEFAULT_PARAMS.KEY_ROOT_MIDI) as number;
   const keyMode = getP(p, "KEY_MODE", DEFAULT_PARAMS.KEY_MODE) as string;
   const bpm = getP(p, "COMPOSE_DEFAULT_BPM", DEFAULT_PARAMS.COMPOSE_DEFAULT_BPM) as number;
+  const addAccompaniment = getP(p, "COMPOSE_ADD_ACCOMPANIMENT", DEFAULT_PARAMS.COMPOSE_ADD_ACCOMPANIMENT) as boolean;
   const accompVel = getP(p, "COMPOSE_ACCOMPANIMENT_VELOCITY", DEFAULT_PARAMS.COMPOSE_ACCOMPANIMENT_VELOCITY) as number;
   const accompStyle = getP(p, "COMPOSE_ACCOMPANIMENT_STYLE", DEFAULT_PARAMS.COMPOSE_ACCOMPANIMENT_STYLE) as string;
-  const addCounterpoint = getP(p, "COMPOSE_ADD_COUNTERPOINT", DEFAULT_PARAMS.COMPOSE_ADD_COUNTERPOINT) as boolean;
-  const counterpointStyle = getP(p, "COMPOSE_COUNTERPOINT_STYLE", DEFAULT_PARAMS.COMPOSE_COUNTERPOINT_STYLE) as string;
   const chordDuration = getP(p, "COMPOSE_CHORD_DURATION", DEFAULT_PARAMS.COMPOSE_CHORD_DURATION) as number;
   const arpNoteDur = getP(p, "COMPOSE_ARPEGGIO_NOTE_DURATION", DEFAULT_PARAMS.COMPOSE_ARPEGGIO_NOTE_DURATION) as number;
+  const addCounterpoint = getP(p, "COMPOSE_ADD_COUNTERPOINT", DEFAULT_PARAMS.COMPOSE_ADD_COUNTERPOINT) as boolean;
+  const counterpointStyle = getP(p, "COMPOSE_COUNTERPOINT_STYLE", DEFAULT_PARAMS.COMPOSE_COUNTERPOINT_STYLE) as string;
   const cptVelRatio = getP(p, "COMPOSE_COUNTERPOINT_VELOCITY_RATIO", DEFAULT_PARAMS.COMPOSE_COUNTERPOINT_VELOCITY_RATIO) as number;
+  const addPad = getP(p, "COMPOSE_ADD_PAD", DEFAULT_PARAMS.COMPOSE_ADD_PAD) as boolean;
+  const padVelocity = getP(p, "COMPOSE_PAD_VELOCITY", DEFAULT_PARAMS.COMPOSE_PAD_VELOCITY) as number;
+  const padChordDuration = getP(p, "COMPOSE_PAD_CHORD_DURATION", DEFAULT_PARAMS.COMPOSE_PAD_CHORD_DURATION) as number;
+  const padOctaveOffset = getP(p, "COMPOSE_PAD_OCTAVE_OFFSET", DEFAULT_PARAMS.COMPOSE_PAD_OCTAVE_OFFSET) as number;
+  const addBass = getP(p, "COMPOSE_ADD_BASS", DEFAULT_PARAMS.COMPOSE_ADD_BASS) as boolean;
+  const bassVelocity = getP(p, "COMPOSE_BASS_VELOCITY", DEFAULT_PARAMS.COMPOSE_BASS_VELOCITY) as number;
+  const bassStyle = getP(p, "COMPOSE_BASS_STYLE", DEFAULT_PARAMS.COMPOSE_BASS_STYLE) as string;
+  const bassOctaveOffset = getP(p, "COMPOSE_BASS_OCTAVE_OFFSET", DEFAULT_PARAMS.COMPOSE_BASS_OCTAVE_OFFSET) as number;
+  const addPercussion = getP(p, "COMPOSE_ADD_PERCUSSION", DEFAULT_PARAMS.COMPOSE_ADD_PERCUSSION) as boolean;
+  const percussionVelocity = getP(p, "COMPOSE_PERCUSSION_VELOCITY", DEFAULT_PARAMS.COMPOSE_PERCUSSION_VELOCITY) as number;
+  const percussionPattern = getP(p, "COMPOSE_PERCUSSION_PATTERN", DEFAULT_PARAMS.COMPOSE_PERCUSSION_PATTERN) as string;
+  const addOrnamentation = getP(p, "COMPOSE_ADD_ORNAMENTATION", DEFAULT_PARAMS.COMPOSE_ADD_ORNAMENTATION) as boolean;
+  const ornamentVelocityRatio = getP(p, "COMPOSE_ORNAMENT_VELOCITY_RATIO", DEFAULT_PARAMS.COMPOSE_ORNAMENT_VELOCITY_RATIO) as number;
+  const ornamentDensity = getP(p, "COMPOSE_ORNAMENT_DENSITY", DEFAULT_PARAMS.COMPOSE_ORNAMENT_DENSITY) as number;
+  const ornamentMaxDuration = getP(p, "COMPOSE_ORNAMENT_MAX_DURATION", DEFAULT_PARAMS.COMPOSE_ORNAMENT_MAX_DURATION) as number;
   const num = getP(p, "TIME_SIGNATURE_NUMERATOR", DEFAULT_PARAMS.TIME_SIGNATURE_NUMERATOR) as number;
   const denom = getP(p, "TIME_SIGNATURE_DENOMINATOR", DEFAULT_PARAMS.TIME_SIGNATURE_DENOMINATOR) as number;
+  const beatsPerBar = getP(p, "BEATS_PER_BAR", DEFAULT_PARAMS.BEATS_PER_BAR) as number;
 
   const chords = getProgressionChords(keyRoot, keyMode);
   const tracks: Track[] = [];
   const motiveNotes = motive.map((n) => ({ ...n }));
   tracks.push({ name: "motive", notes: motiveNotes });
 
-  if (motive.length > 0) {
+  if (addAccompaniment && motive.length > 0) {
     const endTime = Math.max(...motive.map((n) => n.start + n.duration));
     let accomp: Note[];
     if (accompStyle === "arpeggiated") {
@@ -669,16 +821,32 @@ export function compose(motive: Note[], params: Params = {}): Score {
     tracks.push({ name: "accompaniment", notes: accomp });
   }
 
+  if (addBass && motive.length > 0) {
+    tracks.push({ name: "bass", notes: makeBass(motive, chords, bassVelocity, bassStyle, bassOctaveOffset, chordDuration) });
+  }
+  if (addPad && motive.length > 0) {
+    tracks.push({ name: "pad", notes: makePad(motive, chords, padVelocity, padChordDuration, padOctaveOffset, keyRoot) });
+  }
+
   if (addCounterpoint && motive.length > 0) {
     let cpt: Note[];
     if (counterpointStyle === "parallel_6th") {
       cpt = counterpointParallel(motive, keyRoot, keyMode, 5, cptVelRatio);
     } else if (counterpointStyle === "ostinato") {
       cpt = counterpointOstinato(motive, keyRoot, keyMode, cptVelRatio);
+    } else if (counterpointStyle === "secondary_melody") {
+      cpt = counterpointSecondaryMelody(motive, keyRoot, keyMode, cptVelRatio);
     } else {
       cpt = counterpointParallel(motive, keyRoot, keyMode, 2, cptVelRatio);
     }
     tracks.push({ name: "counterpoint", notes: cpt });
+  }
+
+  if (addOrnamentation && motive.length > 0) {
+    tracks.push({ name: "ornamentation", notes: makeOrnamentation(motive, keyRoot, keyMode, ornamentVelocityRatio, ornamentDensity, ornamentMaxDuration) });
+  }
+  if (addPercussion && motive.length > 0) {
+    tracks.push({ name: "percussion", notes: makePercussion(motive, percussionVelocity, percussionPattern, beatsPerBar) });
   }
 
   const score: Score = { bpm, time_signature: [num, denom], tracks };

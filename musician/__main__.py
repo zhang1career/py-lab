@@ -25,7 +25,6 @@ WATCH_POLL_INTERVAL = 1.0
 from musician.models import TrajectoryPoint, Note
 from musician.trajectory_to_motive import trajectory_to_motive
 from musician.composer import compose
-from musician.player import play_score
 from musician.export_midi import export_score_to_midi
 from musician.export_ts_lib import export_ts_lib
 
@@ -93,8 +92,29 @@ PANEL_GROUPS = [
             ("COMPOSE_ACCOMPANIMENT_VELOCITY", "float", 0.35, "伴奏力度 [0,1]", 0.0, 1.0),
             ("COMPOSE_CHORD_DURATION", "float", 2.0, "每个和弦持续拍数", 0.5, 4.0),
             ("COMPOSE_ACCOMPANIMENT_STYLE", "choice", "block", "伴奏形态", "block", "arpeggiated", "rhythm_pattern"),
-            ("COMPOSE_ADD_COUNTERPOINT", "bool", False, "添加对位声部"),
-            ("COMPOSE_COUNTERPOINT_STYLE", "choice", "parallel_3rd", "对位风格", "parallel_3rd", "parallel_6th", "ostinato"),
+            ("COMPOSE_ADD_COUNTERPOINT", "bool", False, "添加对位/副旋律声部"),
+            ("COMPOSE_COUNTERPOINT_STYLE", "choice", "parallel_3rd", "对位/副旋律风格", "parallel_3rd", "parallel_6th", "ostinato", "secondary_melody"),
+        ],
+    ),
+    (
+        "叠加层（Pad / 低音 / 打击 / 装饰）",
+        [
+            ("COMPOSE_ADD_PAD", "bool", False, "添加 Pad 铺底"),
+            ("COMPOSE_PAD_VELOCITY", "float", 0.25, "Pad 力度 [0,1]", 0.0, 1.0),
+            ("COMPOSE_PAD_CHORD_DURATION", "float", 4.0, "Pad 每和弦持续拍数", 1.0, 8.0),
+            ("COMPOSE_PAD_OCTAVE_OFFSET", "int", 1, "Pad 音区（相对根音八度）", -1, 3),
+            ("COMPOSE_ADD_BASS", "bool", False, "添加低音线"),
+            ("COMPOSE_BASS_VELOCITY", "float", 0.4, "低音力度 [0,1]", 0.0, 1.0),
+            ("COMPOSE_BASS_STYLE", "choice", "root_only", "低音形态", "root_only", "root_fifth"),
+            ("COMPOSE_BASS_OCTAVE_OFFSET", "int", -1, "低音音区（相对根音八度）", -3, 0),
+            ("COMPOSE_ADD_PERCUSSION", "bool", False, "添加打击轨"),
+            ("COMPOSE_PERCUSSION_VELOCITY", "float", 0.5, "打击力度 [0,1]", 0.0, 1.0),
+            ("COMPOSE_PERCUSSION_PATTERN", "choice", "simple_44", "打击节奏型", "simple_44"),
+            ("COMPOSE_PERCUSSION_PLAYBACK", "choice", "gm", "打击播放", "gm", "c2"),
+            ("COMPOSE_ADD_ORNAMENTATION", "bool", False, "添加装饰音"),
+            ("COMPOSE_ORNAMENT_VELOCITY_RATIO", "float", 0.6, "装饰力度比例 [0,1]", 0.0, 1.0),
+            ("COMPOSE_ORNAMENT_DENSITY", "float", 0.3, "装饰密度 [0,1]", 0.0, 1.0),
+            ("COMPOSE_ORNAMENT_MAX_DURATION", "float", 0.25, "装饰音最大时值（拍）", 0.125, 0.5),
         ],
     ),
     (
@@ -160,6 +180,26 @@ COUNTERPOINT_PARAM_KEYS = frozenset({
     "COMPOSE_COUNTERPOINT_VELOCITY_RATIO",
     "COMPOSE_COUNTERPOINT_STYLE",
 })
+PAD_PARAM_KEYS = frozenset({
+    "COMPOSE_PAD_VELOCITY",
+    "COMPOSE_PAD_CHORD_DURATION",
+    "COMPOSE_PAD_OCTAVE_OFFSET",
+})
+BASS_PARAM_KEYS = frozenset({
+    "COMPOSE_BASS_VELOCITY",
+    "COMPOSE_BASS_STYLE",
+    "COMPOSE_BASS_OCTAVE_OFFSET",
+})
+PERCUSSION_PARAM_KEYS = frozenset({
+    "COMPOSE_PERCUSSION_VELOCITY",
+    "COMPOSE_PERCUSSION_PATTERN",
+    "COMPOSE_PERCUSSION_PLAYBACK",
+})
+ORNAMENT_PARAM_KEYS = frozenset({
+    "COMPOSE_ORNAMENT_VELOCITY_RATIO",
+    "COMPOSE_ORNAMENT_DENSITY",
+    "COMPOSE_ORNAMENT_MAX_DURATION",
+})
 
 
 def _get_panel_values(vars_map: dict, kinds: dict) -> dict:
@@ -217,6 +257,8 @@ def _conf_py_section_for_key(key: str) -> Optional[str]:
         return "# 轨迹→动机：随机扰动（方向 / 速度 / 力度 / 轮廓）"
     if key == "COMPOSE_DEFAULT_BPM":
         return "# 作曲器：伴奏与和声"
+    if key == "COMPOSE_ADD_PAD":
+        return "# 作曲器：叠加层（Pad / 低音 / 打击 / 装饰）"
     if key == "BEATS_PER_BAR":
         return "# 律动：4/4 强拍与摇摆"
     if key == "PLAYER_SAMPLE_RATE":
@@ -334,9 +376,25 @@ score = compose(
     motive,
     bpm=bpm,
     add_accompaniment=getattr(conf, "COMPOSE_ADD_ACCOMPANIMENT", True),
+    accompaniment_velocity=getattr(conf, "COMPOSE_ACCOMPANIMENT_VELOCITY", 0.35),
     accompaniment_style=getattr(conf, "COMPOSE_ACCOMPANIMENT_STYLE", "block"),
     add_counterpoint=getattr(conf, "COMPOSE_ADD_COUNTERPOINT", False),
     counterpoint_style=getattr(conf, "COMPOSE_COUNTERPOINT_STYLE", "parallel_3rd"),
+    add_pad=getattr(conf, "COMPOSE_ADD_PAD", False),
+    pad_velocity=getattr(conf, "COMPOSE_PAD_VELOCITY", 0.25),
+    pad_chord_duration=getattr(conf, "COMPOSE_PAD_CHORD_DURATION", 4.0),
+    pad_octave_offset=getattr(conf, "COMPOSE_PAD_OCTAVE_OFFSET", 1),
+    add_bass=getattr(conf, "COMPOSE_ADD_BASS", False),
+    bass_velocity=getattr(conf, "COMPOSE_BASS_VELOCITY", 0.4),
+    bass_style=getattr(conf, "COMPOSE_BASS_STYLE", "root_only"),
+    bass_octave_offset=getattr(conf, "COMPOSE_BASS_OCTAVE_OFFSET", -1),
+    add_percussion=getattr(conf, "COMPOSE_ADD_PERCUSSION", False),
+    percussion_velocity=getattr(conf, "COMPOSE_PERCUSSION_VELOCITY", 0.5),
+    percussion_pattern=getattr(conf, "COMPOSE_PERCUSSION_PATTERN", "simple_44"),
+    add_ornamentation=getattr(conf, "COMPOSE_ADD_ORNAMENTATION", False),
+    ornament_velocity_ratio=getattr(conf, "COMPOSE_ORNAMENT_VELOCITY_RATIO", 0.6),
+    ornament_density=getattr(conf, "COMPOSE_ORNAMENT_DENSITY", 0.3),
+    ornament_max_duration=getattr(conf, "COMPOSE_ORNAMENT_MAX_DURATION", 0.25),
     key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
     key_mode=getattr(conf, "KEY_MODE", "major"),
 )
@@ -442,17 +500,31 @@ def _build_group(
             sb.pack(side=tk.LEFT)
             vars_map[key] = var
             row_widgets.append(sb)
-        if row_widgets and (key in ACCOMPANIMENT_PARAM_KEYS or key in COUNTERPOINT_PARAM_KEYS):
+        if row_widgets and (
+            key in ACCOMPANIMENT_PARAM_KEYS
+            or key in COUNTERPOINT_PARAM_KEYS
+            or key in PAD_PARAM_KEYS
+            or key in BASS_PARAM_KEYS
+            or key in PERCUSSION_PARAM_KEYS
+            or key in ORNAMENT_PARAM_KEYS
+        ):
             dependent_widgets.setdefault(key, []).extend(row_widgets)
         ttk.Label(row, text=hint, foreground="gray").pack(side=tk.LEFT, padx=8)
 
 
 def _update_dependent_states(vars_map: dict, dependent_widgets: dict) -> None:
-    """根据伴奏/对位开关更新相关参数控件的可编辑状态。"""
-    acc_on = vars_map.get("COMPOSE_ADD_ACCOMPANIMENT")
-    cpt_on = vars_map.get("COMPOSE_ADD_COUNTERPOINT")
-    acc_on = acc_on.get() if acc_on is not None else True
-    cpt_on = cpt_on.get() if cpt_on is not None else False
+    """根据各叠加层开关更新相关参数控件的可编辑状态。"""
+    def _on(var_key: str) -> bool:
+        v = vars_map.get(var_key)
+        return v.get() if v is not None else False
+
+    acc_on = _on("COMPOSE_ADD_ACCOMPANIMENT")
+    cpt_on = _on("COMPOSE_ADD_COUNTERPOINT")
+    pad_on = _on("COMPOSE_ADD_PAD")
+    bass_on = _on("COMPOSE_ADD_BASS")
+    perc_on = _on("COMPOSE_ADD_PERCUSSION")
+    ornament_on = _on("COMPOSE_ADD_ORNAMENTATION")
+
     for key in ACCOMPANIMENT_PARAM_KEYS:
         state = "normal" if acc_on else "disabled"
         for w in dependent_widgets.get(key, []):
@@ -462,6 +534,34 @@ def _update_dependent_states(vars_map: dict, dependent_widgets: dict) -> None:
                 pass
     for key in COUNTERPOINT_PARAM_KEYS:
         state = "normal" if cpt_on else "disabled"
+        for w in dependent_widgets.get(key, []):
+            try:
+                w.configure(state=state)
+            except tk.TclError:
+                pass
+    for key in PAD_PARAM_KEYS:
+        state = "normal" if pad_on else "disabled"
+        for w in dependent_widgets.get(key, []):
+            try:
+                w.configure(state=state)
+            except tk.TclError:
+                pass
+    for key in BASS_PARAM_KEYS:
+        state = "normal" if bass_on else "disabled"
+        for w in dependent_widgets.get(key, []):
+            try:
+                w.configure(state=state)
+            except tk.TclError:
+                pass
+    for key in PERCUSSION_PARAM_KEYS:
+        state = "normal" if perc_on else "disabled"
+        for w in dependent_widgets.get(key, []):
+            try:
+                w.configure(state=state)
+            except tk.TclError:
+                pass
+    for key in ORNAMENT_PARAM_KEYS:
+        state = "normal" if ornament_on else "disabled"
         for w in dependent_widgets.get(key, []):
             try:
                 w.configure(state=state)
@@ -509,18 +609,23 @@ def main() -> None:
         parent = left_col if i < _PANEL_LEFT_COLUMN_GROUPS else right_col
         _build_group(parent, title, params, vars_map, kinds, dependent_widgets)
 
-    # 伴奏/对位开关控制对应参数的可编辑状态
+    # 各叠加层开关控制对应参数的可编辑状态
     _update_dependent_states(vars_map, dependent_widgets)
 
-    def _on_accomp_or_counterpoint_toggle(*_args) -> None:
+    def _on_layer_toggle(*_args) -> None:
         _update_dependent_states(vars_map, dependent_widgets)
 
-    vars_map.get("COMPOSE_ADD_ACCOMPANIMENT") and vars_map["COMPOSE_ADD_ACCOMPANIMENT"].trace_add(
-        "write", _on_accomp_or_counterpoint_toggle
-    )
-    vars_map.get("COMPOSE_ADD_COUNTERPOINT") and vars_map["COMPOSE_ADD_COUNTERPOINT"].trace_add(
-        "write", _on_accomp_or_counterpoint_toggle
-    )
+    for switch_key in (
+        "COMPOSE_ADD_ACCOMPANIMENT",
+        "COMPOSE_ADD_COUNTERPOINT",
+        "COMPOSE_ADD_PAD",
+        "COMPOSE_ADD_BASS",
+        "COMPOSE_ADD_PERCUSSION",
+        "COMPOSE_ADD_ORNAMENTATION",
+    ):
+        v = vars_map.get(switch_key)
+        if v is not None:
+            v.trace_add("write", _on_layer_toggle)
 
     # 面板参数防抖写回 conf.py
     _conf_py_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "conf.py")
@@ -632,9 +737,25 @@ def main() -> None:
                     motive,
                     bpm=bpm,
                     add_accompaniment=getattr(conf, "COMPOSE_ADD_ACCOMPANIMENT", True),
+                    accompaniment_velocity=getattr(conf, "COMPOSE_ACCOMPANIMENT_VELOCITY", 0.35),
                     accompaniment_style=getattr(conf, "COMPOSE_ACCOMPANIMENT_STYLE", "block"),
                     add_counterpoint=getattr(conf, "COMPOSE_ADD_COUNTERPOINT", False),
                     counterpoint_style=getattr(conf, "COMPOSE_COUNTERPOINT_STYLE", "parallel_3rd"),
+                    add_pad=getattr(conf, "COMPOSE_ADD_PAD", False),
+                    pad_velocity=getattr(conf, "COMPOSE_PAD_VELOCITY", 0.25),
+                    pad_chord_duration=getattr(conf, "COMPOSE_PAD_CHORD_DURATION", 4.0),
+                    pad_octave_offset=getattr(conf, "COMPOSE_PAD_OCTAVE_OFFSET", 1),
+                    add_bass=getattr(conf, "COMPOSE_ADD_BASS", False),
+                    bass_velocity=getattr(conf, "COMPOSE_BASS_VELOCITY", 0.4),
+                    bass_style=getattr(conf, "COMPOSE_BASS_STYLE", "root_only"),
+                    bass_octave_offset=getattr(conf, "COMPOSE_BASS_OCTAVE_OFFSET", -1),
+                    add_percussion=getattr(conf, "COMPOSE_ADD_PERCUSSION", False),
+                    percussion_velocity=getattr(conf, "COMPOSE_PERCUSSION_VELOCITY", 0.5),
+                    percussion_pattern=getattr(conf, "COMPOSE_PERCUSSION_PATTERN", "simple_44"),
+                    add_ornamentation=getattr(conf, "COMPOSE_ADD_ORNAMENTATION", False),
+                    ornament_velocity_ratio=getattr(conf, "COMPOSE_ORNAMENT_VELOCITY_RATIO", 0.6),
+                    ornament_density=getattr(conf, "COMPOSE_ORNAMENT_DENSITY", 0.3),
+                    ornament_max_duration=getattr(conf, "COMPOSE_ORNAMENT_MAX_DURATION", 0.25),
                     key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
                     key_mode=getattr(conf, "KEY_MODE", "major"),
                 )
