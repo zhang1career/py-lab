@@ -12,6 +12,18 @@ from .groove import apply_groove
 # GM 鼓键
 GM_KICK = 36
 GM_SNARE = 38
+
+
+def time_signature_to_beats_per_bar(num: int, denom: int) -> int:
+    """
+    根据拍号 (num/denom) 计算每小节强拍数。
+    - 复合拍（denom=8 且 num 为 3 的倍数）：6/8→2, 9/8→3, 12/8→4, 3/8→1
+    - 单拍（denom=2 或 4 等）：beats = num
+    - 其他：num 作为 fallback
+    """
+    if denom == 8 and num > 0 and num % 3 == 0:
+        return num // 3
+    return max(1, num)
 # C2 for percussion when playback mode is c2
 PERCUSSION_C2_MIDI = 36
 
@@ -83,11 +95,10 @@ def compose(
 
     if time_signature is not None:
         num, denom = time_signature
-        beats_per_bar = num
     else:
         num = getattr(conf, "TIME_SIGNATURE_NUMERATOR", 4)
         denom = getattr(conf, "TIME_SIGNATURE_DENOMINATOR", 4)
-        beats_per_bar = getattr(conf, "BEATS_PER_BAR", 4)
+    beats_per_bar = time_signature_to_beats_per_bar(num, denom)
 
     if add_percussion and motive:
         perc_notes = _make_percussion(motive, percussion_velocity, percussion_pattern, beats_per_bar)
