@@ -108,14 +108,16 @@ def _normalize_table_value(
     raw: dict,
     default_root_midi: int,
     default_mode: str,
-) -> Tuple[List[Any], int, str]:
+) -> Tuple[List[Any], int, str, dict]:
     """
-    解析表项 value：{"notes": [...], "key_root": 可选, "KEY_MODE"/"key_mode": 可选}。
+    解析表项 value：{"notes": [...], "key_root": 可选, "KEY_MODE"/"key_mode": 可选,
+    "time_sign_numerator"/"time_sign_denominator": 可选}。
     key_root 取值为 a～g、a#～g#，会转为 MIDI（如 c→60，C4 为基准）；有则覆盖 default。
-    返回 (notes_list, root_midi, mode)。
+    返回 (notes_list, root_midi, mode, overrides)。
+    overrides 含 time_sign_numerator、time_sign_denominator（仅当表项有值时）。
     """
     if not isinstance(raw, dict) or "notes" not in raw:
-        return [], default_root_midi, default_mode
+        return [], default_root_midi, default_mode, {}
     notes_list = raw["notes"]
     # 根音：优先 key_root（字母名），否则 KEY_ROOT_MIDI（数字），否则 default
     key_root_raw = raw.get("key_root")
@@ -131,7 +133,19 @@ def _normalize_table_value(
     # 调式：key_mode 或 KEY_MODE 或 default
     mode_raw = raw.get("key_mode") or raw.get("KEY_MODE")
     mode = str(mode_raw) if mode_raw is not None else default_mode
-    return notes_list, root_midi, mode
+    # 可选拍号覆盖
+    overrides: dict = {}
+    num_val = raw.get("time_sign_numerator")
+    denom_val = raw.get("time_sign_denominator")
+    if num_val is not None and denom_val is not None:
+        try:
+            n, d = int(num_val), int(denom_val)
+            if n > 0 and d > 0:
+                overrides["time_sign_numerator"] = n
+                overrides["time_sign_denominator"] = d
+        except (TypeError, ValueError):
+            pass
+    return notes_list, root_midi, mode, overrides
 
 
 def _notes_from_table_value(
@@ -169,10 +183,11 @@ def lookup_melody(
     mode: str,
     table_path: Optional[str] = None,
     use_fallback: bool = True,
-) -> Motive:
+) -> Tuple[Motive, dict]:
     """
-    按 key（音级序列或字符串）最长前缀查表，返回 Motive。
-    若无匹配则 use_fallback 时返回默认旋律，否则返回空列表。
+    按 key（音级序列或字符串）最长前缀查表，返回 (Motive, overrides)。
+    overrides 为 dict，可能含 time_sign_numerator、time_sign_denominator（仅当旋律表项有值时）。
+    若无匹配则 use_fallback 时返回默认旋律，否则返回 ([], {})。
     """
     if isinstance(key, str):
         key_tuple = tuple(int(x.strip()) for x in key.split(",") if x.strip())
@@ -185,13 +200,14 @@ def lookup_melody(
         k = key_to_string(prefix)
         if k in table:
             raw = table[k]
-            notes_list, resolved_root_midi, resolved_mode = _normalize_table_value(
+            notes_list, resolved_root_midi, resolved_mode, overrides = _normalize_table_value(
                 raw, root_midi, mode
             )
             if notes_list:
-                return _notes_from_table_value(
+                motive = _notes_from_table_value(
                     notes_list, resolved_root_midi, resolved_mode
                 )
+                return motive, overrides
     if use_fallback:
-        return _fallback_motive(root_midi, mode)
-    return []
+        return _fallback_motive(root_midi, mode), {}
+    return [], {}

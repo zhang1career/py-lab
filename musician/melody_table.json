@@ -32,6 +32,8 @@
     ]
   },
   "3": {
+    "time_sign_numerator": 4,
+    "time_sign_denominator": 4,
     "notes": [
       {"d": 3, "dur": 0.5, "vel": 0.84},
       {"d": 4, "dur": 0.375, "vel": 0.8},

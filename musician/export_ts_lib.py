@@ -300,7 +300,12 @@ export type MelodyEntry = {
   KEY_ROOT_MIDI?: number;
   KEY_MODE?: string;
   key_mode?: string;
+  /** Optional per-melody time signature override (replaces TIME_SIGNATURE_* / BEATS_PER_BAR when both present). */
+  time_sign_numerator?: number;
+  time_sign_denominator?: number;
 };
+
+export type MelodyOverrides = { time_sign_numerator?: number; time_sign_denominator?: number };
 export type MelodyTable = Record<string, MelodyEntry>;
 
 const KEY_ROOT_SEMITONE: Record<string, number> = {
@@ -319,7 +324,7 @@ function keyRootToMidi(noteName: string, octave: number = 4): number {
 const DEFAULT_MELODY_TABLE: MelodyTable = {
   "1": { notes: [{ d: 1, dur: 0.5, vel: 0.85 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 1, dur: 1, vel: 0.8 }] },
   "2": { notes: [{ d: 2, dur: 0.5, vel: 0.8 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] },
-  "3": { notes: [{ d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 1, dur: 0.5, vel: 0.8 }, { d: 3, dur: 1, vel: 0.8 }] },
+  "3": { notes: [{ d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 1, dur: 0.5, vel: 0.8 }, { d: 3, dur: 1, vel: 0.8 }], time_sign_numerator: 3, time_sign_denominator: 4 },
   "4": { notes: [{ d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 1, vel: 0.8 }] },
   "5": { notes: [{ d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 3, dur: 1, vel: 0.8 }] },
   "6": { notes: [{ d: 6, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 4, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] },
@@ -335,8 +340,9 @@ function keyToString(key: number[]): string {
   return key.join(",");
 }
 
-function normalizeTableValue(raw: MelodyEntry | undefined, defaultRootMidi: number, defaultMode: string): [MelodyEntry["notes"], number, string] {
-  if (!raw || !Array.isArray(raw.notes) || raw.notes.length === 0) return [[], defaultRootMidi, defaultMode];
+function normalizeTableValue(raw: MelodyEntry | undefined, defaultRootMidi: number, defaultMode: string): [MelodyEntry["notes"], number, string, MelodyOverrides] {
+  const emptyOverrides: MelodyOverrides = {};
+  if (!raw || !Array.isArray(raw.notes) || raw.notes.length === 0) return [[], defaultRootMidi, defaultMode, emptyOverrides];
   let rootMidi: number;
   const kr = raw.key_root;
   if (kr !== undefined && kr !== null) {
@@ -347,7 +353,14 @@ function normalizeTableValue(raw: MelodyEntry | undefined, defaultRootMidi: numb
     rootMidi = defaultRootMidi;
   }
   const mode = raw.key_mode ?? raw.KEY_MODE ?? defaultMode;
-  return [raw.notes, rootMidi, mode];
+  const overrides: MelodyOverrides = {};
+  const num = raw.time_sign_numerator;
+  const denom = raw.time_sign_denominator;
+  if (num != null && denom != null && num > 0 && denom > 0) {
+    overrides.time_sign_numerator = num;
+    overrides.time_sign_denominator = denom;
+  }
+  return [raw.notes, rootMidi, mode, overrides];
 }
 
 function notesFromTableValue(raw: MelodyEntry["notes"], rootMidi: number, mode: string): Note[] {
@@ -372,28 +385,28 @@ function fallbackMotive(rootMidi: number, mode: string): Note[] {
   );
 }
 
-/** Longest-prefix lookup in melody table; useFallback when no match. */
+/** Longest-prefix lookup in melody table; useFallback when no match. Returns [notes, overrides]. */
 export function lookupMelody(
   key: number[] | string,
   rootMidi: number,
   mode: string,
   table: MelodyTable | undefined = DEFAULT_MELODY_TABLE,
   useFallback: boolean = true
-): Note[] {
+): [Note[], MelodyOverrides] {
   const keyArr = typeof key === "string" ? key.split(",").map((x) => parseInt(x.trim(), 10)) : key;
   const tbl = table ?? DEFAULT_MELODY_TABLE;
   for (let len = keyArr.length; len >= 1; len--) {
     const prefix = keyArr.slice(0, len);
     const k = keyToString(prefix);
     const raw = tbl[k];
-    const [notesList, resolvedRootMidi, resolvedMode] = normalizeTableValue(raw, rootMidi, mode);
-    if (notesList.length > 0) return notesFromTableValue(notesList, resolvedRootMidi, resolvedMode);
+    const [notesList, resolvedRootMidi, resolvedMode, overrides] = normalizeTableValue(raw, rootMidi, mode);
+    if (notesList.length > 0) return [notesFromTableValue(notesList, resolvedRootMidi, resolvedMode), overrides];
   }
-  return useFallback ? fallbackMotive(rootMidi, mode) : [];
+  return useFallback ? [fallbackMotive(rootMidi, mode), {}] : [[], {}];
 }
 
-/** Input: trajectory (TrajectoryPoint[]) or key (number[]). Returns motive. */
-export function trajectoryOrKeyToMotive(trajectoryOrKey: TrajectoryPoint[] | number[], params: Params = {}): Note[] {
+/** Input: trajectory (TrajectoryPoint[]) or key (number[]). Returns [motive, overrides]. */
+export function trajectoryOrKeyToMotive(trajectoryOrKey: TrajectoryPoint[] | number[], params: Params = {}): [Note[], MelodyOverrides] {
   const p = { ...DEFAULT_PARAMS, ...params };
   const rootMidi = getP(p, "KEY_ROOT_MIDI", DEFAULT_PARAMS.KEY_ROOT_MIDI) as number;
   const mode = getP(p, "KEY_MODE", DEFAULT_PARAMS.KEY_MODE) as string;
@@ -773,12 +786,18 @@ export function trajectoryToScore(
   trajectoryOrKey: TrajectoryPoint[] | number[],
   params: Params = {}
 ): Score {
-  const motive = trajectoryOrKeyToMotive(trajectoryOrKey, params);
-  return compose(motive, params);
+  const [motive, overrides] = trajectoryOrKeyToMotive(trajectoryOrKey, params);
+  const mergedParams: Params = {
+    ...params,
+    ...(overrides.time_sign_numerator != null && overrides.time_sign_denominator != null
+      ? { TIME_SIGNATURE_NUMERATOR: overrides.time_sign_numerator, TIME_SIGNATURE_DENOMINATOR: overrides.time_sign_denominator, BEATS_PER_BAR: overrides.time_sign_numerator } as Params
+      : {}),
+  };
+  return compose(motive, mergedParams);
 }
 
 export { trajectoryToKey, lookupMelody, trajectoryOrKeyToMotive, parseMelodyTableFromJson } from "./melodyTable";
-export type { MelodyTable } from "./melodyTable";
+export type { MelodyTable, MelodyOverrides } from "./melodyTable";
 export { compose } from "./composer";
 '''
 

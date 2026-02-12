@@ -2,17 +2,20 @@
 律动：4/4 强拍重音（velocity）与八分摇摆（swing）。
 在作曲器输出上应用，使 MIDI 与播放一致。
 """
+from typing import Optional
+
 from . import conf
 from .models import Note, Score, Track
 
 
-def apply_groove(score: Score) -> Score:
+def apply_groove(score: Score, beats_per_bar: Optional[int] = None) -> Score:
     """
     对乐谱应用强拍重音与摇摆感，返回新 Score（不修改原 score）。
     - 强拍重音：每小节第一拍（start % beats_per_bar < 小量）的 velocity 乘以系数，上限 1.0。
     - 摇摆：落在「每拍后半八分」上的音符（如 0.5, 1.5, 2.5 拍）将 start 延后。
     """
-    beats_per_bar = getattr(conf, "BEATS_PER_BAR", 4)
+    if beats_per_bar is None:
+        beats_per_bar = getattr(conf, "BEATS_PER_BAR", 4)
     accent_factor = getattr(conf, "GROOVE_ACCENT_STRONG_BEAT_FACTOR", 1.25)
     swing_amount = getattr(conf, "GROOVE_SWING_AMOUNT", 0.25)
     # 判定「强拍」的容差：start 在 bar_start 附近

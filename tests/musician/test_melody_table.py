@@ -49,7 +49,7 @@ def test_key_to_string():
 
 def test_lookup_melody_returns_motive():
     """查表应返回非空 Motive（至少 fallback）。"""
-    motive = lookup_melody((1, 3, 5, 3, 1), 60, "major", use_fallback=True)
+    motive, _ = lookup_melody((1, 3, 5, 3, 1), 60, "major", use_fallback=True)
     assert len(motive) > 0
     for n in motive:
         assert 0 <= n.pitch <= 127
@@ -59,26 +59,27 @@ def test_lookup_melody_returns_motive():
 
 def test_lookup_melody_longest_prefix():
     """最长前缀匹配：表中有 "1" 时，key (1,2,3,4,5) 应命中 "1" 的旋律。"""
-    motive = lookup_melody((1, 2, 3, 4, 5), 60, "major", use_fallback=True)
+    motive, _ = lookup_melody((1, 2, 3, 4, 5), 60, "major", use_fallback=True)
     assert len(motive) > 0
 
 
 def test_lookup_melody_fallback_when_no_match():
     """无匹配且 use_fallback=True 时返回默认旋律。"""
-    motive = lookup_melody((9, 9, 9), 60, "major", table_path="/nonexistent.json", use_fallback=True)
+    motive, _ = lookup_melody((9, 9, 9), 60, "major", table_path="/nonexistent.json", use_fallback=True)
     assert len(motive) > 0
     assert all(1 <= (n.pitch - 60) % 12 <= 11 or n.pitch == 60 for n in motive)
 
 
 def test_lookup_melody_no_fallback_returns_empty_when_no_match():
     """无匹配且 use_fallback=False 时返回空列表。"""
-    motive = lookup_melody((9, 9, 9), 60, "major", table_path="/nonexistent.json", use_fallback=False)
+    motive, overrides = lookup_melody((9, 9, 9), 60, "major", table_path="/nonexistent.json", use_fallback=False)
     assert motive == []
+    assert overrides == {}
 
 
 def test_lookup_melody_by_string_key():
     """支持字符串 key 查表。"""
-    motive = lookup_melody("1,3,5", 60, "major", use_fallback=True)
+    motive, _ = lookup_melody("1,3,5", 60, "major", use_fallback=True)
     assert len(motive) > 0
 
 
@@ -86,6 +87,16 @@ def test_motive_start_times_monotonic():
     """查表得到的 motive 的 start 应单调递增。"""
     trajectory = make_trajectory(20)
     key = trajectory_to_key(trajectory, 60, "major", key_length=5)
-    motive = lookup_melody(key, 60, "major")
+    motive, _ = lookup_melody(key, 60, "major")
     for i in range(1, len(motive)):
         assert motive[i].start >= motive[i - 1].start
+
+
+def test_lookup_melody_returns_time_sign_overrides():
+    """旋律表项含 time_sign_numerator/denominator 时，overrides 应包含。"""
+    import os
+    table_path = os.path.join(os.path.dirname(__file__), "..", "..", "musician", "melody_table.json")
+    motive, overrides = lookup_melody((3,), 60, "major", table_path=table_path, use_fallback=True)
+    assert len(motive) > 0
+    assert overrides.get("time_sign_numerator") == 3
+    assert overrides.get("time_sign_denominator") == 4

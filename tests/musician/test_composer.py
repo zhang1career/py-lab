@@ -35,9 +35,17 @@ def test_compose_with_accompaniment_has_two_tracks():
 
 
 def test_compose_without_accompaniment_single_track():
-    """不开启伴奏时只有动机轨。"""
+    """不开启伴奏且关闭其他轨时只有动机轨。"""
     motive = _make_motive(4)
-    score = compose(motive, add_accompaniment=False)
+    score = compose(
+        motive,
+        add_accompaniment=False,
+        add_pad=False,
+        add_bass=False,
+        add_counterpoint=False,
+        add_ornamentation=False,
+        add_percussion=False,
+    )
     assert len(score.tracks) == 1
     assert score.tracks[0].name == "motive"
 

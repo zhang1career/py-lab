@@ -340,38 +340,40 @@ if melody_key_str:
     key = tuple(int(x.strip()) for x in melody_key_str.split(",") if x.strip())
 else:
     key = trajectory_to_key(trajectory, key_root, key_mode, key_length=getattr(conf, "MELODY_KEY_LENGTH", 5))
-motive = lookup_melody(key, key_root, key_mode, use_fallback=getattr(conf, "MELODY_FALLBACK", True))
+motive, overrides = lookup_melody(key, key_root, key_mode, use_fallback=getattr(conf, "MELODY_FALLBACK", True))
 seed = (time.time_ns() % (2**32)) ^ (os.getpid() % (2**32))
 rng = random.Random(seed)
 transpose = rng.randint(conf.DEMO_TRANSPOSE_MIN, conf.DEMO_TRANSPOSE_MAX)
 bpm = rng.randint(conf.DEMO_BPM_MIN, conf.DEMO_BPM_MAX)
 motive = [Note(pitch=max(0, min(127, n.pitch + transpose)), duration=n.duration, velocity=n.velocity, start=n.start) for n in motive]
-score = compose(
-    motive,
-    bpm=bpm,
-    add_accompaniment=getattr(conf, "COMPOSE_ADD_ACCOMPANIMENT", True),
-    accompaniment_velocity=getattr(conf, "COMPOSE_ACCOMPANIMENT_VELOCITY", 0.35),
-    accompaniment_style=getattr(conf, "COMPOSE_ACCOMPANIMENT_STYLE", "block"),
-    add_counterpoint=getattr(conf, "COMPOSE_ADD_COUNTERPOINT", False),
-    counterpoint_style=getattr(conf, "COMPOSE_COUNTERPOINT_STYLE", "parallel_3rd"),
-    add_pad=getattr(conf, "COMPOSE_ADD_PAD", False),
-    pad_velocity=getattr(conf, "COMPOSE_PAD_VELOCITY", 0.25),
-    pad_chord_duration=getattr(conf, "COMPOSE_PAD_CHORD_DURATION", 4.0),
-    pad_octave_offset=getattr(conf, "COMPOSE_PAD_OCTAVE_OFFSET", 1),
-    add_bass=getattr(conf, "COMPOSE_ADD_BASS", False),
-    bass_velocity=getattr(conf, "COMPOSE_BASS_VELOCITY", 0.4),
-    bass_style=getattr(conf, "COMPOSE_BASS_STYLE", "root_only"),
-    bass_octave_offset=getattr(conf, "COMPOSE_BASS_OCTAVE_OFFSET", -1),
-    add_percussion=getattr(conf, "COMPOSE_ADD_PERCUSSION", False),
-    percussion_velocity=getattr(conf, "COMPOSE_PERCUSSION_VELOCITY", 0.5),
-    percussion_pattern=getattr(conf, "COMPOSE_PERCUSSION_PATTERN", "simple_44"),
-    add_ornamentation=getattr(conf, "COMPOSE_ADD_ORNAMENTATION", False),
-    ornament_velocity_ratio=getattr(conf, "COMPOSE_ORNAMENT_VELOCITY_RATIO", 0.6),
-    ornament_density=getattr(conf, "COMPOSE_ORNAMENT_DENSITY", 0.3),
-    ornament_max_duration=getattr(conf, "COMPOSE_ORNAMENT_MAX_DURATION", 0.25),
-    key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
-    key_mode=getattr(conf, "KEY_MODE", "major"),
-)
+compose_kw = {
+    "bpm": bpm,
+    "add_accompaniment": getattr(conf, "COMPOSE_ADD_ACCOMPANIMENT", True),
+    "accompaniment_velocity": getattr(conf, "COMPOSE_ACCOMPANIMENT_VELOCITY", 0.35),
+    "accompaniment_style": getattr(conf, "COMPOSE_ACCOMPANIMENT_STYLE", "block"),
+    "add_counterpoint": getattr(conf, "COMPOSE_ADD_COUNTERPOINT", False),
+    "counterpoint_style": getattr(conf, "COMPOSE_COUNTERPOINT_STYLE", "parallel_3rd"),
+    "add_pad": getattr(conf, "COMPOSE_ADD_PAD", False),
+    "pad_velocity": getattr(conf, "COMPOSE_PAD_VELOCITY", 0.25),
+    "pad_chord_duration": getattr(conf, "COMPOSE_PAD_CHORD_DURATION", 4.0),
+    "pad_octave_offset": getattr(conf, "COMPOSE_PAD_OCTAVE_OFFSET", 1),
+    "add_bass": getattr(conf, "COMPOSE_ADD_BASS", False),
+    "bass_velocity": getattr(conf, "COMPOSE_BASS_VELOCITY", 0.4),
+    "bass_style": getattr(conf, "COMPOSE_BASS_STYLE", "root_only"),
+    "bass_octave_offset": getattr(conf, "COMPOSE_BASS_OCTAVE_OFFSET", -1),
+    "add_percussion": getattr(conf, "COMPOSE_ADD_PERCUSSION", False),
+    "percussion_velocity": getattr(conf, "COMPOSE_PERCUSSION_VELOCITY", 0.5),
+    "percussion_pattern": getattr(conf, "COMPOSE_PERCUSSION_PATTERN", "simple_44"),
+    "add_ornamentation": getattr(conf, "COMPOSE_ADD_ORNAMENTATION", False),
+    "ornament_velocity_ratio": getattr(conf, "COMPOSE_ORNAMENT_VELOCITY_RATIO", 0.6),
+    "ornament_density": getattr(conf, "COMPOSE_ORNAMENT_DENSITY", 0.3),
+    "ornament_max_duration": getattr(conf, "COMPOSE_ORNAMENT_MAX_DURATION", 0.25),
+    "key_root_midi": getattr(conf, "KEY_ROOT_MIDI", 60),
+    "key_mode": getattr(conf, "KEY_MODE", "major"),
+}
+if "time_sign_numerator" in overrides and "time_sign_denominator" in overrides:
+    compose_kw["time_signature"] = (overrides["time_sign_numerator"], overrides["time_sign_denominator"])
+score = compose(motive, **compose_kw)
 play_score(score)
 """
     env = {**os.environ, "MUSICIAN_CONF_FILE": conf_path}
@@ -701,15 +703,14 @@ def main() -> None:
                 key_root = getattr(conf, "KEY_ROOT_MIDI", 60)
                 key_mode = getattr(conf, "KEY_MODE", "major")
                 key = _get_melody_key(trajectory, key_root, key_mode)
-                motive = lookup_melody(key, key_root, key_mode, use_fallback=getattr(conf, "MELODY_FALLBACK", True))
+                motive, overrides = lookup_melody(key, key_root, key_mode, use_fallback=getattr(conf, "MELODY_FALLBACK", True))
                 seed = (time.time_ns() % (2**32)) ^ (os.getpid() % (2**32))
                 import random
                 rng = random.Random(seed)
                 transpose = rng.randint(conf.DEMO_TRANSPOSE_MIN, conf.DEMO_TRANSPOSE_MAX)
                 bpm = rng.randint(conf.DEMO_BPM_MIN, conf.DEMO_BPM_MAX)
                 motive = [Note(pitch=max(0, min(127, n.pitch + transpose)), duration=n.duration, velocity=n.velocity, start=n.start) for n in motive]
-                score = compose(
-                    motive,
+                compose_kw = dict(
                     bpm=bpm,
                     add_accompaniment=getattr(conf, "COMPOSE_ADD_ACCOMPANIMENT", True),
                     accompaniment_velocity=getattr(conf, "COMPOSE_ACCOMPANIMENT_VELOCITY", 0.35),
@@ -734,6 +735,9 @@ def main() -> None:
                     key_root_midi=getattr(conf, "KEY_ROOT_MIDI", 60),
                     key_mode=getattr(conf, "KEY_MODE", "major"),
                 )
+                if "time_sign_numerator" in overrides and "time_sign_denominator" in overrides:
+                    compose_kw["time_signature"] = (overrides["time_sign_numerator"], overrides["time_sign_denominator"])
+                score = compose(motive, **compose_kw)
                 path = os.path.join(os.getcwd(), "musician_export.mid")
                 export_score_to_midi(score, path)
                 root.after(0, lambda: status_var.set(f"已导出: {path}"))

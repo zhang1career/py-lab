@@ -41,6 +41,7 @@ def compose(
     ornament_max_duration: float = getattr(conf, "COMPOSE_ORNAMENT_MAX_DURATION", 0.25),
     key_root_midi: Optional[int] = None,
     key_mode: Optional[str] = None,
+    time_signature: Optional[tuple[int, int]] = None,
 ) -> Score:
     """
     由动机生成乐谱。
@@ -80,14 +81,20 @@ def compose(
         )
         tracks.append(Track(name="ornamentation", notes=ornament_notes))
 
+    if time_signature is not None:
+        num, denom = time_signature
+        beats_per_bar = num
+    else:
+        num = getattr(conf, "TIME_SIGNATURE_NUMERATOR", 4)
+        denom = getattr(conf, "TIME_SIGNATURE_DENOMINATOR", 4)
+        beats_per_bar = getattr(conf, "BEATS_PER_BAR", 4)
+
     if add_percussion and motive:
-        perc_notes = _make_percussion(motive, percussion_velocity, percussion_pattern)
+        perc_notes = _make_percussion(motive, percussion_velocity, percussion_pattern, beats_per_bar)
         tracks.append(Track(name="percussion", notes=perc_notes))
 
-    num = getattr(conf, "TIME_SIGNATURE_NUMERATOR", 4)
-    denom = getattr(conf, "TIME_SIGNATURE_DENOMINATOR", 4)
     score = Score(bpm=bpm, time_signature=(num, denom), tracks=tracks)
-    return apply_groove(score)
+    return apply_groove(score, beats_per_bar=beats_per_bar)
 
 
 def _make_accompaniment(
@@ -316,12 +323,14 @@ def _make_percussion(
     motive: Motive,
     velocity: float,
     pattern: str,
+    beats_per_bar: Optional[int] = None,
 ) -> list[Note]:
     """打击轨：simple_44 为 4/4 第 1、3 拍 kick，第 2、4 拍 snare。"""
     if not motive:
         return []
     end_time = max(n.start + n.duration for n in motive)
-    beats_per_bar = getattr(conf, "BEATS_PER_BAR", 4)
+    if beats_per_bar is None:
+        beats_per_bar = getattr(conf, "BEATS_PER_BAR", 4)
     notes: list[Note] = []
     t = 0.0
     step = 0.5
