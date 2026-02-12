@@ -294,7 +294,7 @@ export function trajectoryToKey(
 }
 
 export type MelodyEntry = {
-  notes: Array<{ degree?: number; duration?: number; velocity?: number }>;
+  notes: Array<{ d?: number; dur?: number; vel?: number; degree?: number; duration?: number; velocity?: number }>;
   /** Root as note name (a～g, a#～g#) or MIDI number; converted to MIDI when string. */
   key_root?: string | number;
   KEY_ROOT_MIDI?: number;
@@ -317,13 +317,13 @@ function keyRootToMidi(noteName: string, octave: number = 4): number {
 }
 
 const DEFAULT_MELODY_TABLE: MelodyTable = {
-  "1": { notes: [{ degree: 1, duration: 0.5, velocity: 0.85 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 1, duration: 1, velocity: 0.8 }] },
-  "2": { notes: [{ degree: 2, duration: 0.5, velocity: 0.8 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }] },
-  "3": { notes: [{ degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 1, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 1, velocity: 0.8 }] },
-  "4": { notes: [{ degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 1, velocity: 0.8 }] },
-  "5": { notes: [{ degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 1, velocity: 0.8 }] },
-  "6": { notes: [{ degree: 6, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 4, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }] },
-  "7": { KEY_MODE: "minor", notes: [{ degree: 7, duration: 0.5, velocity: 0.8 }, { degree: 6, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }] },
+  "1": { notes: [{ d: 1, dur: 0.5, vel: 0.85 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 1, dur: 1, vel: 0.8 }] },
+  "2": { notes: [{ d: 2, dur: 0.5, vel: 0.8 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] },
+  "3": { notes: [{ d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 1, dur: 0.5, vel: 0.8 }, { d: 3, dur: 1, vel: 0.8 }] },
+  "4": { notes: [{ d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 1, vel: 0.8 }] },
+  "5": { notes: [{ d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 3, dur: 1, vel: 0.8 }] },
+  "6": { notes: [{ d: 6, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 4, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] },
+  "7": { KEY_MODE: "minor", notes: [{ d: 7, dur: 0.5, vel: 0.8 }, { d: 6, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] },
 };
 
 /** Parse melody_table.json at runtime; use result as params.MELODY_TABLE in trajectoryOrKeyToMotive / trajectoryToScore. */
@@ -335,7 +335,7 @@ function keyToString(key: number[]): string {
   return key.join(",");
 }
 
-function normalizeTableValue(raw: MelodyEntry | undefined, defaultRootMidi: number, defaultMode: string): [Array<{ degree?: number; duration?: number; velocity?: number }>, number, string] {
+function normalizeTableValue(raw: MelodyEntry | undefined, defaultRootMidi: number, defaultMode: string): [MelodyEntry["notes"], number, string] {
   if (!raw || !Array.isArray(raw.notes) || raw.notes.length === 0) return [[], defaultRootMidi, defaultMode];
   let rootMidi: number;
   const kr = raw.key_root;
@@ -350,13 +350,13 @@ function normalizeTableValue(raw: MelodyEntry | undefined, defaultRootMidi: numb
   return [raw.notes, rootMidi, mode];
 }
 
-function notesFromTableValue(raw: Array<{ degree?: number; duration?: number; velocity?: number }>, rootMidi: number, mode: string): Note[] {
+function notesFromTableValue(raw: MelodyEntry["notes"], rootMidi: number, mode: string): Note[] {
   const notes: Note[] = [];
   let t = 0;
   for (const item of raw) {
-    const degree = item.degree ?? 1;
-    const duration = item.duration ?? 0.5;
-    const velocity = Math.max(0, Math.min(1, item.velocity ?? 0.8));
+    const degree = item.d ?? item.degree ?? 1;
+    const duration = item.dur ?? item.duration ?? 0.5;
+    const velocity = Math.max(0, Math.min(1, item.vel ?? item.velocity ?? 0.8));
     const pitch = degreeToPitch(degree, rootMidi, mode);
     notes.push({ pitch, duration, velocity, start: t });
     t += duration;
@@ -366,7 +366,7 @@ function notesFromTableValue(raw: Array<{ degree?: number; duration?: number; ve
 
 function fallbackMotive(rootMidi: number, mode: string): Note[] {
   return notesFromTableValue(
-    [1, 3, 5, 3, 1].map((d) => ({ degree: d, duration: 0.5, velocity: 0.8 })),
+    [1, 3, 5, 3, 1].map((d) => ({ d, dur: 0.5, vel: 0.8 })),
     rootMidi,
     mode
   );

@@ -139,13 +139,13 @@ def _notes_from_table_value(
     root_midi: int,
     mode: str,
 ) -> Motive:
-    """将表项 value（[{degree, duration, velocity}, ...]）转为 Motive（Note 列表，含 start）。"""
+    """将表项 value（[{d, dur, vel} 或 {degree, duration, velocity}, ...]）转为 Motive（Note 列表，含 start）。"""
     notes: Motive = []
     t = 0.0
     for item in raw:
-        degree = int(item.get("degree", 1))
-        duration = float(item.get("duration", 0.5))
-        velocity = float(item.get("velocity", 0.8))
+        degree = int(item.get("d", item.get("degree", 1)))
+        duration = float(item.get("dur", item.get("duration", 0.5)))
+        velocity = float(item.get("vel", item.get("velocity", 0.8)))
         velocity = max(0.0, min(1.0, velocity))
         pitch = _degree_to_pitch(degree, root_midi, mode)
         notes.append(Note(pitch=pitch, duration=duration, velocity=velocity, start=t))
@@ -157,7 +157,7 @@ def _fallback_motive(root_midi: int, mode: str) -> Motive:
     """无表项匹配时返回的默认动机（如 1-3-5-3-1）。"""
     degrees = [1, 3, 5, 3, 1]
     return _notes_from_table_value(
-        [{"degree": d, "duration": 0.5, "velocity": 0.8} for d in degrees],
+        [{"d": d, "dur": 0.5, "vel": 0.8} for d in degrees],
         root_midi,
         mode,
     )
