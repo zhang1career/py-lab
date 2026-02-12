@@ -29,10 +29,17 @@ export function trajectoryToScore(
   trajectoryOrKey: TrajectoryPoint[] | number[],
   params: Params = {}
 ): Score {
-  const motive = trajectoryOrKeyToMotive(trajectoryOrKey, params);
-  return compose(motive, params);
+  const [motive, overrides] = trajectoryOrKeyToMotive(trajectoryOrKey, params);
+  const mergedParams: Params = {
+    ...params,
+    ...(overrides.time_sign_numerator != null && overrides.time_sign_denominator != null
+      ? { TIME_SIGNATURE_NUMERATOR: overrides.time_sign_numerator, TIME_SIGNATURE_DENOMINATOR: overrides.time_sign_denominator } as Params
+      : {}),
+    ...(overrides.bpm != null ? { COMPOSE_DEFAULT_BPM: overrides.bpm } as Params : {}),
+  };
+  return compose(motive, mergedParams);
 }
 
 export { trajectoryToKey, lookupMelody, trajectoryOrKeyToMotive, parseMelodyTableFromJson } from "./melodyTable";
-export type { MelodyTable } from "./melodyTable";
+export type { MelodyTable, MelodyOverrides } from "./melodyTable";
 export { compose } from "./composer";

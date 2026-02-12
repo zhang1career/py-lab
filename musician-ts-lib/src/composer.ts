@@ -10,6 +10,12 @@ import { getProgressionChords, intervalInScaleSteps, getScale, snapPitchToScale 
 const GM_KICK = 36;
 const GM_SNARE = 38;
 
+/** Compute beats per bar from time signature: compound (6/8→2, 9/8→3, 12/8→4) vs simple (num). */
+function timeSignatureToBeatsPerBar(num: number, denom: number): number {
+  if (denom === 8 && num > 0 && num % 3 === 0) return num / 3;
+  return Math.max(1, num);
+}
+
 function getP<T>(p: Params, key: keyof typeof DEFAULT_PARAMS, fallback: T): T {
   const v = p[key];
   return (v !== undefined && v !== null) ? (v as T) : fallback;
@@ -257,7 +263,7 @@ export function compose(motive: Note[], params: Params = {}): Score {
   const ornamentMaxDuration = getP(p, "COMPOSE_ORNAMENT_MAX_DURATION", DEFAULT_PARAMS.COMPOSE_ORNAMENT_MAX_DURATION) as number;
   const num = getP(p, "TIME_SIGNATURE_NUMERATOR", DEFAULT_PARAMS.TIME_SIGNATURE_NUMERATOR) as number;
   const denom = getP(p, "TIME_SIGNATURE_DENOMINATOR", DEFAULT_PARAMS.TIME_SIGNATURE_DENOMINATOR) as number;
-  const beatsPerBar = getP(p, "BEATS_PER_BAR", DEFAULT_PARAMS.BEATS_PER_BAR) as number;
+  const beatsPerBar = timeSignatureToBeatsPerBar(num, denom);
 
   const chords = getProgressionChords(keyRoot, keyMode);
   const tracks: Track[] = [];
@@ -306,7 +312,8 @@ export function compose(motive: Note[], params: Params = {}): Score {
   }
 
   const score: Score = { bpm, time_signature: [num, denom], tracks };
-  return applyGroove(score, p);
+  const grooveParams = { ...p, BEATS_PER_BAR: beatsPerBar } as Params;
+  return applyGroove(score, grooveParams);
 }
 
 function applyGroove(score: Score, p: Params): Score {

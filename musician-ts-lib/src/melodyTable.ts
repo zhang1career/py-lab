@@ -60,16 +60,47 @@ export function trajectoryToKey(
   return degrees;
 }
 
-export type MelodyTable = Record<string, Array<{ degree: number; duration: number; velocity: number }>>;
+export type MelodyEntry = {
+  notes: Array<{ d?: number; dur?: number; vel?: number; degree?: number; duration?: number; velocity?: number }>;
+  /** Root as note name (a～g, a#～g#) or MIDI number; converted to MIDI when string. */
+  key_root?: string | number;
+  KEY_ROOT_MIDI?: number;
+  KEY_MODE?: string;
+  key_mode?: string;
+  /** Optional per-melody time signature override (replaces TIME_SIGNATURE_* / BEATS_PER_BAR when both present). */
+  time_sign_numerator?: number;
+  time_sign_denominator?: number;
+  /** Optional per-melody BPM override (overrides COMPOSE_DEFAULT_BPM at runtime). */
+  bpm?: number;
+};
+
+export type MelodyOverrides = { time_sign_numerator?: number; time_sign_denominator?: number; bpm?: number };
+/** Tree: key 1–7 → leaf = MelodyEntry[] (candidates), inner = MelodyTable (next level). */
+export interface MelodyTable {
+  [key: string]: MelodyEntry[] | MelodyTable;
+}
+
+const KEY_ROOT_SEMITONE: Record<string, number> = {
+  c: 0, "c#": 1, d: 2, "d#": 3, e: 4, f: 5, "f#": 6,
+  g: 7, "g#": 8, a: 9, "a#": 10, b: 11,
+};
+
+/** Note name (a～g, a#～g#) → MIDI. Default octave 4 → C4=60. */
+function keyRootToMidi(noteName: string, octave: number = 4): number {
+  const s = noteName.trim().toLowerCase().replace(/♯/g, "#");
+  const semitone = KEY_ROOT_SEMITONE[s];
+  if (semitone === undefined) throw new Error(`invalid key_root: ${JSON.stringify(noteName)}, expected a～g or a#～g#`);
+  return Math.max(0, Math.min(127, (octave + 1) * 12 + semitone));
+}
 
 const DEFAULT_MELODY_TABLE: MelodyTable = {
-  "1": [{ degree: 1, duration: 0.5, velocity: 0.85 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 1, duration: 1, velocity: 0.8 }],
-  "2": [{ degree: 2, duration: 0.5, velocity: 0.8 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }],
-  "3": [{ degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 1, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 1, velocity: 0.8 }],
-  "4": [{ degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 1, velocity: 0.8 }],
-  "5": [{ degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 1, velocity: 0.8 }],
-  "6": [{ degree: 6, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 4, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }],
-  "7": [{ degree: 7, duration: 0.5, velocity: 0.8 }, { degree: 6, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }],
+  "1": [{ notes: [{ d: 1, dur: 0.5, vel: 0.85 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 1, dur: 1, vel: 0.8 }] }],
+  "2": [{ notes: [{ d: 2, dur: 0.5, vel: 0.8 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] }],
+  "3": [{ notes: [{ d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 1, dur: 0.5, vel: 0.8 }, { d: 3, dur: 1, vel: 0.8 }], time_sign_numerator: 3, time_sign_denominator: 4 }],
+  "4": [{ notes: [{ d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 1, vel: 0.8 }] }],
+  "5": [{ notes: [{ d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 3, dur: 1, vel: 0.8 }] }],
+  "6": [{ notes: [{ d: 6, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 4, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] }],
+  "7": [{ KEY_MODE: "minor", notes: [{ d: 7, dur: 0.5, vel: 0.8 }, { d: 6, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] }],
 };
 
 /** Parse melody_table.json at runtime; use result as params.MELODY_TABLE in trajectoryOrKeyToMotive / trajectoryToScore. */
@@ -77,17 +108,40 @@ export function parseMelodyTableFromJson(jsonString: string): MelodyTable {
   return JSON.parse(jsonString) as MelodyTable;
 }
 
-function keyToString(key: number[]): string {
-  return key.join(",");
+function normalizeTableValue(raw: MelodyEntry | undefined, defaultRootMidi: number, defaultMode: string): [MelodyEntry["notes"], number, string, MelodyOverrides] {
+  const emptyOverrides: MelodyOverrides = {};
+  if (!raw || !Array.isArray(raw.notes) || raw.notes.length === 0) return [[], defaultRootMidi, defaultMode, emptyOverrides];
+  let rootMidi: number;
+  const kr = raw.key_root;
+  if (kr !== undefined && kr !== null) {
+    rootMidi = typeof kr === "string" ? keyRootToMidi(kr) : Math.max(0, Math.min(127, kr));
+  } else if (raw.KEY_ROOT_MIDI !== undefined && raw.KEY_ROOT_MIDI !== null) {
+    rootMidi = raw.KEY_ROOT_MIDI;
+  } else {
+    rootMidi = defaultRootMidi;
+  }
+  const mode = raw.key_mode ?? raw.KEY_MODE ?? defaultMode;
+  const overrides: MelodyOverrides = {};
+  const num = raw.time_sign_numerator;
+  const denom = raw.time_sign_denominator;
+  if (num != null && denom != null && num > 0 && denom > 0) {
+    overrides.time_sign_numerator = num;
+    overrides.time_sign_denominator = denom;
+  }
+  const bpmVal = raw.bpm;
+  if (bpmVal != null && typeof bpmVal === "number" && bpmVal > 0) {
+    overrides.bpm = bpmVal;
+  }
+  return [raw.notes, rootMidi, mode, overrides];
 }
 
-function notesFromTableValue(raw: Array<{ degree?: number; duration?: number; velocity?: number }>, rootMidi: number, mode: string): Note[] {
+function notesFromTableValue(raw: MelodyEntry["notes"], rootMidi: number, mode: string): Note[] {
   const notes: Note[] = [];
   let t = 0;
   for (const item of raw) {
-    const degree = item.degree ?? 1;
-    const duration = item.duration ?? 0.5;
-    const velocity = Math.max(0, Math.min(1, item.velocity ?? 0.8));
+    const degree = item.d ?? item.degree ?? 1;
+    const duration = item.dur ?? item.duration ?? 0.5;
+    const velocity = Math.max(0, Math.min(1, item.vel ?? item.velocity ?? 0.8));
     const pitch = degreeToPitch(degree, rootMidi, mode);
     notes.push({ pitch, duration, velocity, start: t });
     t += duration;
@@ -97,33 +151,68 @@ function notesFromTableValue(raw: Array<{ degree?: number; duration?: number; ve
 
 function fallbackMotive(rootMidi: number, mode: string): Note[] {
   return notesFromTableValue(
-    [1, 3, 5, 3, 1].map((d) => ({ degree: d, duration: 0.5, velocity: 0.8 })),
+    [1, 3, 5, 3, 1].map((d) => ({ d, dur: 0.5, vel: 0.8 })),
     rootMidi,
     mode
   );
 }
 
-/** Longest-prefix lookup in melody table; useFallback when no match. */
+/** Recursively collect all MelodyEntry from a tree node (leaf array or inner MelodyTable). Used when key stops at inner node. */
+function collectAllEntries(node: MelodyEntry[] | MelodyTable): MelodyEntry[] {
+  const out: MelodyEntry[] = [];
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      if (item && Array.isArray(item.notes)) out.push(item);
+    }
+    return out;
+  }
+  for (const child of Object.values(node)) {
+    out.push(...collectAllEntries(child as MelodyEntry[] | MelodyTable));
+  }
+  return out;
+}
+
+/** Tree longest-prefix lookup: follow key sequence into tree; leaf = array of MelodyEntry, pick one at random. If we stop at an inner node, collect all descendant melodies and pick one at random. */
+function lookupTree(tbl: MelodyTable, keyArr: number[]): MelodyEntry | undefined {
+  let node: MelodyEntry[] | MelodyTable = tbl;
+  for (const d of keyArr) {
+    if (Array.isArray(node)) break;
+    const k = String(d);
+    if (!(k in node)) break;
+    node = (node as MelodyTable)[k];
+  }
+  if (Array.isArray(node) && node.length > 0) {
+    const entry = node[Math.floor(Math.random() * node.length)] as MelodyEntry;
+    if (entry && Array.isArray(entry.notes)) return entry;
+  }
+  if (!Array.isArray(node) && typeof node === "object" && node !== null) {
+    const candidates = collectAllEntries(node as MelodyTable);
+    if (candidates.length > 0) {
+      return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+  }
+  return undefined;
+}
+
 export function lookupMelody(
   key: number[] | string,
   rootMidi: number,
   mode: string,
   table: MelodyTable | undefined = DEFAULT_MELODY_TABLE,
   useFallback: boolean = true
-): Note[] {
+): [Note[], MelodyOverrides] {
   const keyArr = typeof key === "string" ? key.split(",").map((x) => parseInt(x.trim(), 10)) : key;
   const tbl = table ?? DEFAULT_MELODY_TABLE;
-  for (let len = keyArr.length; len >= 1; len--) {
-    const prefix = keyArr.slice(0, len);
-    const k = keyToString(prefix);
-    const raw = tbl[k];
-    if (raw && raw.length > 0) return notesFromTableValue(raw, rootMidi, mode);
+  const raw = lookupTree(tbl, keyArr);
+  if (raw) {
+    const [notesList, resolvedRootMidi, resolvedMode, overrides] = normalizeTableValue(raw, rootMidi, mode);
+    if (notesList.length > 0) return [notesFromTableValue(notesList, resolvedRootMidi, resolvedMode), overrides];
   }
-  return useFallback ? fallbackMotive(rootMidi, mode) : [];
+  return useFallback ? [fallbackMotive(rootMidi, mode), {}] : [[], {}];
 }
 
-/** Input: trajectory (TrajectoryPoint[]) or key (number[]). Returns motive. */
-export function trajectoryOrKeyToMotive(trajectoryOrKey: TrajectoryPoint[] | number[], params: Params = {}): Note[] {
+/** Input: trajectory (TrajectoryPoint[]) or key (number[]). Returns [motive, overrides]. */
+export function trajectoryOrKeyToMotive(trajectoryOrKey: TrajectoryPoint[] | number[], params: Params = {}): [Note[], MelodyOverrides] {
   const p = { ...DEFAULT_PARAMS, ...params };
   const rootMidi = getP(p, "KEY_ROOT_MIDI", DEFAULT_PARAMS.KEY_ROOT_MIDI) as number;
   const mode = getP(p, "KEY_MODE", DEFAULT_PARAMS.KEY_MODE) as string;
