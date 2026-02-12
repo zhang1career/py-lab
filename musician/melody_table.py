@@ -7,8 +7,8 @@ import os
 from typing import Any, List, Optional, Tuple, Union
 
 from . import conf
-from .models import TrajectoryPoint, Trajectory, Note, Motive
-from .tonality import get_scale, scale_degree_to_semitone, snap_pitch_to_scale
+from .models import Trajectory, Note, Motive
+from .tonality import get_scale, scale_degree_to_semitone
 
 
 # 音级 1–7 对应音阶内第一八度；查表 value 中 degree 为 1–7
@@ -70,8 +70,31 @@ def key_to_string(key: Union[Tuple[int, ...], List[int]]) -> str:
     return ",".join(str(d) for d in key)
 
 
+# 音名字母 → 相对 C 的半音数（C=0, C#=1, ..., B=11）；C4 = MIDI 60
+_KEY_ROOT_SEMITONE: dict[str, int] = {
+    "c": 0, "c#": 1, "d": 2, "d#": 3, "e": 4, "f": 5, "f#": 6,
+    "g": 7, "g#": 8, "a": 9, "a#": 10, "b": 11,
+}
+
+
+def _key_root_to_midi(note_name: str, octave: int = 4) -> int:
+    """
+    音名（a～g、a#～g#，大小写不敏感）转为 MIDI 音高。
+    默认八度 4，即 C4=60；可传 octave 指定根音八度。
+    """
+    s = str(note_name).strip().lower().replace("♯", "#")
+    semitone = _KEY_ROOT_SEMITONE.get(s)
+    if semitone is None:
+        raise ValueError(f"invalid key_root: {note_name!r}, expected a～g or a#～g#")
+    return max(0, min(127, (octave + 1) * 12 + semitone))
+
+
 def load_melody_table(path: Optional[str] = None) -> dict:
-    """从 JSON 文件加载旋律表。key 为前缀字符串，value 为旋律（音符列表，每音 degree/duration/velocity）。"""
+    """
+    从 JSON 文件加载旋律表。key 为前缀字符串。
+    value 为对象：{"notes": [...], "key_root": 可选(a～g/a#～g#), "KEY_MODE"/"key_mode": 可选}；
+    key_root 转为 MIDI 根音（如 c→60），有则覆盖 conf 的调性。
+    """
     p = path or getattr(conf, "MELODY_TABLE_PATH", None)
     if not p:
         p = os.path.join(os.path.dirname(__file__), "melody_table.json")
@@ -79,6 +102,36 @@ def load_melody_table(path: Optional[str] = None) -> dict:
         return {}
     with open(p, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _normalize_table_value(
+    raw: dict,
+    default_root_midi: int,
+    default_mode: str,
+) -> Tuple[List[Any], int, str]:
+    """
+    解析表项 value：{"notes": [...], "key_root": 可选, "KEY_MODE"/"key_mode": 可选}。
+    key_root 取值为 a～g、a#～g#，会转为 MIDI（如 c→60，C4 为基准）；有则覆盖 default。
+    返回 (notes_list, root_midi, mode)。
+    """
+    if not isinstance(raw, dict) or "notes" not in raw:
+        return [], default_root_midi, default_mode
+    notes_list = raw["notes"]
+    # 根音：优先 key_root（字母名），否则 KEY_ROOT_MIDI（数字），否则 default
+    key_root_raw = raw.get("key_root")
+    if key_root_raw is not None:
+        if isinstance(key_root_raw, str):
+            root_midi = _key_root_to_midi(key_root_raw)
+        else:
+            root_midi = int(key_root_raw)
+    elif raw.get("KEY_ROOT_MIDI") is not None:
+        root_midi = int(raw["KEY_ROOT_MIDI"])
+    else:
+        root_midi = default_root_midi
+    # 调式：key_mode 或 KEY_MODE 或 default
+    mode_raw = raw.get("key_mode") or raw.get("KEY_MODE")
+    mode = str(mode_raw) if mode_raw is not None else default_mode
+    return notes_list, root_midi, mode
 
 
 def _notes_from_table_value(
@@ -132,8 +185,13 @@ def lookup_melody(
         k = key_to_string(prefix)
         if k in table:
             raw = table[k]
-            if isinstance(raw, list) and raw:
-                return _notes_from_table_value(raw, root_midi, mode)
+            notes_list, resolved_root_midi, resolved_mode = _normalize_table_value(
+                raw, root_midi, mode
+            )
+            if notes_list:
+                return _notes_from_table_value(
+                    notes_list, resolved_root_midi, resolved_mode
+                )
     if use_fallback:
         return _fallback_motive(root_midi, mode)
     return []

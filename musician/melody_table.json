@@ -1,100 +1,118 @@
 {
-  "1": [
-    {"degree": 1, "duration": 0.5, "velocity": 0.84},
-    {"degree": 2, "duration": 0.375, "velocity": 0.78},
-    {"degree": 3, "duration": 0.5, "velocity": 0.86},
-    {"degree": 2, "duration": 0.5, "velocity": 0.8},
-    {"degree": 1, "duration": 0.375, "velocity": 0.77},
-    {"degree": 2, "duration": 0.5, "velocity": 0.82},
-    {"degree": 3, "duration": 0.375, "velocity": 0.79},
-    {"degree": 4, "duration": 0.5, "velocity": 0.84},
-    {"degree": 3, "duration": 0.5, "velocity": 0.8},
-    {"degree": 3, "duration": 0.5, "velocity": 0.78},
-    {"degree": 2, "duration": 0.75, "velocity": 0.77},
-    {"degree": 1, "duration": 1.25, "velocity": 0.75}
-  ],
-  "2": [
-    {"degree": 2, "duration": 0.5, "velocity": 0.83},
-    {"degree": 3, "duration": 0.375, "velocity": 0.79},
-    {"degree": 4, "duration": 0.5, "velocity": 0.82},
-    {"degree": 3, "duration": 0.375, "velocity": 0.78},
-    {"degree": 4, "duration": 0.5, "velocity": 0.84},
-    {"degree": 5, "duration": 0.75, "velocity": 0.85},
-    {"degree": 4, "duration": 0.5, "velocity": 0.8},
-    {"degree": 3, "duration": 0.5, "velocity": 0.78},
-    {"degree": 2, "duration": 0.75, "velocity": 0.77},
-    {"degree": 1, "duration": 1.25, "velocity": 0.75}
-  ],
-  "3": [
-    {"degree": 3, "duration": 0.5, "velocity": 0.84},
-    {"degree": 4, "duration": 0.375, "velocity": 0.8},
-    {"degree": 3, "duration": 0.5, "velocity": 0.79},
-    {"degree": 2, "duration": 0.375, "velocity": 0.77},
-    {"degree": 3, "duration": 0.5, "velocity": 0.82},
-    {"degree": 4, "duration": 0.375, "velocity": 0.78},
-    {"degree": 5, "duration": 0.5, "velocity": 0.85},
-    {"degree": 4, "duration": 0.5, "velocity": 0.8},
-    {"degree": 3, "duration": 0.5, "velocity": 0.81},
-    {"degree": 6, "duration": 0.5, "velocity": 0.83},
-    {"degree": 5, "duration": 0.375, "velocity": 0.79},
-    {"degree": 4, "duration": 0.5, "velocity": 0.78},
-    {"degree": 2, "duration": 0.75, "velocity": 0.76},
-    {"degree": 1, "duration": 1.25, "velocity": 0.75}
-  ],
-  "4": [
-    {"degree": 4, "duration": 0.5, "velocity": 0.83},
-    {"degree": 3, "duration": 0.375, "velocity": 0.79},
-    {"degree": 2, "duration": 0.5, "velocity": 0.8},
-    {"degree": 3, "duration": 0.5, "velocity": 0.82},
-    {"degree": 4, "duration": 0.375, "velocity": 0.78},
-    {"degree": 5, "duration": 0.75, "velocity": 0.85},
-    {"degree": 4, "duration": 0.5, "velocity": 0.81},
-    {"degree": 5, "duration": 0.375, "velocity": 0.8},
-    {"degree": 4, "duration": 0.5, "velocity": 0.78},
-    {"degree": 3, "duration": 0.5, "velocity": 0.79},
-    {"degree": 2, "duration": 0.75, "velocity": 0.76},
-    {"degree": 1, "duration": 1.25, "velocity": 0.75}
-  ],
-  "5": [
-    {"degree": 5, "duration": 0.5, "velocity": 0.84},
-    {"degree": 4, "duration": 0.375, "velocity": 0.8},
-    {"degree": 5, "duration": 0.5, "velocity": 0.82},
-    {"degree": 6, "duration": 0.5, "velocity": 0.83},
-    {"degree": 5, "duration": 0.375, "velocity": 0.79},
-    {"degree": 4, "duration": 0.5, "velocity": 0.78},
-    {"degree": 3, "duration": 0.5, "velocity": 0.81},
-    {"degree": 2, "duration": 0.5, "velocity": 0.77},
-    {"degree": 2, "duration": 0.75, "velocity": 0.76},
-    {"degree": 1, "duration": 1.25, "velocity": 0.75}
-  ],
-  "6": [
-    {"degree": 6, "duration": 0.5, "velocity": 0.82},
-    {"degree": 5, "duration": 0.375, "velocity": 0.79},
-    {"degree": 4, "duration": 0.5, "velocity": 0.8},
-    {"degree": 3, "duration": 0.5, "velocity": 0.84},
-    {"degree": 4, "duration": 0.375, "velocity": 0.78},
-    {"degree": 5, "duration": 0.5, "velocity": 0.81},
-    {"degree": 4, "duration": 0.5, "velocity": 0.79},
-    {"degree": 3, "duration": 0.5, "velocity": 0.83},
-    {"degree": 6, "duration": 0.5, "velocity": 0.82},
-    {"degree": 5, "duration": 0.375, "velocity": 0.78},
-    {"degree": 4, "duration": 0.5, "velocity": 0.77},
-    {"degree": 3, "duration": 0.5, "velocity": 0.8},
-    {"degree": 2, "duration": 0.75, "velocity": 0.76},
-    {"degree": 1, "duration": 1.25, "velocity": 0.75}
-  ],
-  "7": [
-    {"degree": 7, "duration": 0.5, "velocity": 0.84},
-    {"degree": 6, "duration": 0.375, "velocity": 0.8},
-    {"degree": 5, "duration": 0.5, "velocity": 0.82},
-    {"degree": 6, "duration": 0.375, "velocity": 0.78},
-    {"degree": 5, "duration": 0.5, "velocity": 0.81},
-    {"degree": 4, "duration": 0.5, "velocity": 0.79},
-    {"degree": 3, "duration": 0.5, "velocity": 0.83},
-    {"degree": 4, "duration": 0.375, "velocity": 0.77},
-    {"degree": 3, "duration": 0.5, "velocity": 0.8},
-    {"degree": 2, "duration": 0.5, "velocity": 0.77},
-    {"degree": 2, "duration": 0.75, "velocity": 0.76},
-    {"degree": 1, "duration": 1.25, "velocity": 0.75}
-  ]
+  "1": {
+    "key_root": "d",
+    "key_mode": "major",
+    "notes": [
+      {"degree": 1, "duration": 0.5, "velocity": 0.84},
+      {"degree": 2, "duration": 0.375, "velocity": 0.78},
+      {"degree": 3, "duration": 0.5, "velocity": 0.86},
+      {"degree": 2, "duration": 0.5, "velocity": 0.8},
+      {"degree": 1, "duration": 0.375, "velocity": 0.77},
+      {"degree": 2, "duration": 0.5, "velocity": 0.82},
+      {"degree": 3, "duration": 0.375, "velocity": 0.79},
+      {"degree": 4, "duration": 0.5, "velocity": 0.84},
+      {"degree": 3, "duration": 0.5, "velocity": 0.8},
+      {"degree": 3, "duration": 0.5, "velocity": 0.78},
+      {"degree": 2, "duration": 0.75, "velocity": 0.77},
+      {"degree": 1, "duration": 1.25, "velocity": 0.75}
+    ]
+  },
+  "2": {
+    "notes": [
+      {"degree": 2, "duration": 0.5, "velocity": 0.83},
+      {"degree": 3, "duration": 0.375, "velocity": 0.79},
+      {"degree": 4, "duration": 0.5, "velocity": 0.82},
+      {"degree": 3, "duration": 0.375, "velocity": 0.78},
+      {"degree": 4, "duration": 0.5, "velocity": 0.84},
+      {"degree": 5, "duration": 0.75, "velocity": 0.85},
+      {"degree": 4, "duration": 0.5, "velocity": 0.8},
+      {"degree": 3, "duration": 0.5, "velocity": 0.78},
+      {"degree": 2, "duration": 0.75, "velocity": 0.77},
+      {"degree": 1, "duration": 1.25, "velocity": 0.75}
+    ]
+  },
+  "3": {
+    "notes": [
+      {"degree": 3, "duration": 0.5, "velocity": 0.84},
+      {"degree": 4, "duration": 0.375, "velocity": 0.8},
+      {"degree": 3, "duration": 0.5, "velocity": 0.79},
+      {"degree": 2, "duration": 0.375, "velocity": 0.77},
+      {"degree": 3, "duration": 0.5, "velocity": 0.82},
+      {"degree": 4, "duration": 0.375, "velocity": 0.78},
+      {"degree": 5, "duration": 0.5, "velocity": 0.85},
+      {"degree": 4, "duration": 0.5, "velocity": 0.8},
+      {"degree": 3, "duration": 0.5, "velocity": 0.81},
+      {"degree": 6, "duration": 0.5, "velocity": 0.83},
+      {"degree": 5, "duration": 0.375, "velocity": 0.79},
+      {"degree": 4, "duration": 0.5, "velocity": 0.78},
+      {"degree": 2, "duration": 0.75, "velocity": 0.76},
+      {"degree": 1, "duration": 1.25, "velocity": 0.75}
+    ]
+  },
+  "4": {
+    "notes": [
+      {"degree": 4, "duration": 0.5, "velocity": 0.83},
+      {"degree": 3, "duration": 0.375, "velocity": 0.79},
+      {"degree": 2, "duration": 0.5, "velocity": 0.8},
+      {"degree": 3, "duration": 0.5, "velocity": 0.82},
+      {"degree": 4, "duration": 0.375, "velocity": 0.78},
+      {"degree": 5, "duration": 0.75, "velocity": 0.85},
+      {"degree": 4, "duration": 0.5, "velocity": 0.81},
+      {"degree": 5, "duration": 0.375, "velocity": 0.8},
+      {"degree": 4, "duration": 0.5, "velocity": 0.78},
+      {"degree": 3, "duration": 0.5, "velocity": 0.79},
+      {"degree": 2, "duration": 0.75, "velocity": 0.76},
+      {"degree": 1, "duration": 1.25, "velocity": 0.75}
+    ]
+  },
+  "5": {
+    "notes": [
+      {"degree": 5, "duration": 0.5, "velocity": 0.84},
+      {"degree": 4, "duration": 0.375, "velocity": 0.8},
+      {"degree": 5, "duration": 0.5, "velocity": 0.82},
+      {"degree": 6, "duration": 0.5, "velocity": 0.83},
+      {"degree": 5, "duration": 0.375, "velocity": 0.79},
+      {"degree": 4, "duration": 0.5, "velocity": 0.78},
+      {"degree": 3, "duration": 0.5, "velocity": 0.81},
+      {"degree": 2, "duration": 0.5, "velocity": 0.77},
+      {"degree": 2, "duration": 0.75, "velocity": 0.76},
+      {"degree": 1, "duration": 1.25, "velocity": 0.75}
+    ]
+  },
+  "6": {
+    "notes": [
+      {"degree": 6, "duration": 0.5, "velocity": 0.82},
+      {"degree": 5, "duration": 0.375, "velocity": 0.79},
+      {"degree": 4, "duration": 0.5, "velocity": 0.8},
+      {"degree": 3, "duration": 0.5, "velocity": 0.84},
+      {"degree": 4, "duration": 0.375, "velocity": 0.78},
+      {"degree": 5, "duration": 0.5, "velocity": 0.81},
+      {"degree": 4, "duration": 0.5, "velocity": 0.79},
+      {"degree": 3, "duration": 0.5, "velocity": 0.83},
+      {"degree": 6, "duration": 0.5, "velocity": 0.82},
+      {"degree": 5, "duration": 0.375, "velocity": 0.78},
+      {"degree": 4, "duration": 0.5, "velocity": 0.77},
+      {"degree": 3, "duration": 0.5, "velocity": 0.8},
+      {"degree": 2, "duration": 0.75, "velocity": 0.76},
+      {"degree": 1, "duration": 1.25, "velocity": 0.75}
+    ]
+  },
+  "7": {
+    "key_root": "d",
+    "key_mode": "minor",
+    "notes": [
+      {"degree": 7, "duration": 0.5, "velocity": 0.84},
+      {"degree": 6, "duration": 0.375, "velocity": 0.8},
+      {"degree": 5, "duration": 0.5, "velocity": 0.82},
+      {"degree": 6, "duration": 0.375, "velocity": 0.78},
+      {"degree": 5, "duration": 0.5, "velocity": 0.81},
+      {"degree": 4, "duration": 0.5, "velocity": 0.79},
+      {"degree": 3, "duration": 0.5, "velocity": 0.83},
+      {"degree": 4, "duration": 0.375, "velocity": 0.77},
+      {"degree": 3, "duration": 0.5, "velocity": 0.8},
+      {"degree": 2, "duration": 0.5, "velocity": 0.77},
+      {"degree": 2, "duration": 0.75, "velocity": 0.76},
+      {"degree": 1, "duration": 1.25, "velocity": 0.75}
+    ]
+  }
 }

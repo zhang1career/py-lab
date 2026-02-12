@@ -293,16 +293,37 @@ export function trajectoryToKey(
   return degrees;
 }
 
-export type MelodyTable = Record<string, Array<{ degree: number; duration: number; velocity: number }>>;
+export type MelodyEntry = {
+  notes: Array<{ degree?: number; duration?: number; velocity?: number }>;
+  /** Root as note name (a～g, a#～g#) or MIDI number; converted to MIDI when string. */
+  key_root?: string | number;
+  KEY_ROOT_MIDI?: number;
+  KEY_MODE?: string;
+  key_mode?: string;
+};
+export type MelodyTable = Record<string, MelodyEntry>;
+
+const KEY_ROOT_SEMITONE: Record<string, number> = {
+  c: 0, "c#": 1, d: 2, "d#": 3, e: 4, f: 5, "f#": 6,
+  g: 7, "g#": 8, a: 9, "a#": 10, b: 11,
+};
+
+/** Note name (a～g, a#～g#) → MIDI. Default octave 4 → C4=60. */
+function keyRootToMidi(noteName: string, octave: number = 4): number {
+  const s = noteName.trim().toLowerCase().replace(/♯/g, "#");
+  const semitone = KEY_ROOT_SEMITONE[s];
+  if (semitone === undefined) throw new Error(`invalid key_root: ${JSON.stringify(noteName)}, expected a～g or a#～g#`);
+  return Math.max(0, Math.min(127, (octave + 1) * 12 + semitone));
+}
 
 const DEFAULT_MELODY_TABLE: MelodyTable = {
-  "1": [{ degree: 1, duration: 0.5, velocity: 0.85 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 1, duration: 1, velocity: 0.8 }],
-  "2": [{ degree: 2, duration: 0.5, velocity: 0.8 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }],
-  "3": [{ degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 1, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 1, velocity: 0.8 }],
-  "4": [{ degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 1, velocity: 0.8 }],
-  "5": [{ degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 1, velocity: 0.8 }],
-  "6": [{ degree: 6, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 4, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }],
-  "7": [{ degree: 7, duration: 0.5, velocity: 0.8 }, { degree: 6, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }],
+  "1": { notes: [{ degree: 1, duration: 0.5, velocity: 0.85 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 1, duration: 1, velocity: 0.8 }] },
+  "2": { notes: [{ degree: 2, duration: 0.5, velocity: 0.8 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }] },
+  "3": { notes: [{ degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 1, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 1, velocity: 0.8 }] },
+  "4": { notes: [{ degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.75 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 1, velocity: 0.8 }] },
+  "5": { notes: [{ degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 4, duration: 0.5, velocity: 0.8 }, { degree: 3, duration: 1, velocity: 0.8 }] },
+  "6": { notes: [{ degree: 6, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.8 }, { degree: 4, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }] },
+  "7": { KEY_MODE: "minor", notes: [{ degree: 7, duration: 0.5, velocity: 0.8 }, { degree: 6, duration: 0.5, velocity: 0.8 }, { degree: 5, duration: 0.5, velocity: 0.75 }, { degree: 3, duration: 0.5, velocity: 0.8 }, { degree: 1, duration: 1, velocity: 0.85 }] },
 };
 
 /** Parse melody_table.json at runtime; use result as params.MELODY_TABLE in trajectoryOrKeyToMotive / trajectoryToScore. */
@@ -312,6 +333,21 @@ export function parseMelodyTableFromJson(jsonString: string): MelodyTable {
 
 function keyToString(key: number[]): string {
   return key.join(",");
+}
+
+function normalizeTableValue(raw: MelodyEntry | undefined, defaultRootMidi: number, defaultMode: string): [Array<{ degree?: number; duration?: number; velocity?: number }>, number, string] {
+  if (!raw || !Array.isArray(raw.notes) || raw.notes.length === 0) return [[], defaultRootMidi, defaultMode];
+  let rootMidi: number;
+  const kr = raw.key_root;
+  if (kr !== undefined && kr !== null) {
+    rootMidi = typeof kr === "string" ? keyRootToMidi(kr) : Math.max(0, Math.min(127, kr));
+  } else if (raw.KEY_ROOT_MIDI !== undefined && raw.KEY_ROOT_MIDI !== null) {
+    rootMidi = raw.KEY_ROOT_MIDI;
+  } else {
+    rootMidi = defaultRootMidi;
+  }
+  const mode = raw.key_mode ?? raw.KEY_MODE ?? defaultMode;
+  return [raw.notes, rootMidi, mode];
 }
 
 function notesFromTableValue(raw: Array<{ degree?: number; duration?: number; velocity?: number }>, rootMidi: number, mode: string): Note[] {
@@ -350,7 +386,8 @@ export function lookupMelody(
     const prefix = keyArr.slice(0, len);
     const k = keyToString(prefix);
     const raw = tbl[k];
-    if (raw && raw.length > 0) return notesFromTableValue(raw, rootMidi, mode);
+    const [notesList, resolvedRootMidi, resolvedMode] = normalizeTableValue(raw, rootMidi, mode);
+    if (notesList.length > 0) return notesFromTableValue(notesList, resolvedRootMidi, resolvedMode);
   }
   return useFallback ? fallbackMotive(rootMidi, mode) : [];
 }
