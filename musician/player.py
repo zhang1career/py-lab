@@ -1,13 +1,14 @@
 """
 播放器：将乐谱渲染为音频并播放。
 支持泛音、ADSR 包络与可选 scipy 卷积混响。
+使用 sounddevice 替代 simpleaudio，避免 macOS 上播放结束时的 SIGSEGV (-11) 崩溃。
 """
 import numpy as np
 
 try:
-    import simpleaudio as sa
+    import sounddevice as sd
 except ImportError:
-    sa = None
+    sd = None
 
 try:
     from scipy import signal as scipy_signal
@@ -83,8 +84,8 @@ def _apply_reverb(buffer: np.ndarray, sample_rate: int) -> np.ndarray:
 
 def play_score(score: Score, sample_rate: int = conf.PLAYER_SAMPLE_RATE, use_reverb: bool = True) -> None:
     """将乐谱按拍转换为时间，混合所有音轨后播放。"""
-    if sa is None:
-        raise RuntimeError("需要安装 simpleaudio: pip install simpleaudio")
+    if sd is None:
+        raise RuntimeError("需要安装 sounddevice: pip install sounddevice")
     beat_sec = 60.0 / score.bpm
     total_sec = score.total_duration()
     if total_sec <= 0:
@@ -113,6 +114,6 @@ def play_score(score: Score, sample_rate: int = conf.PLAYER_SAMPLE_RATE, use_rev
     peak = np.max(np.abs(buffer))
     if peak > 0:
         buffer = buffer / peak * conf.PLAYER_MASTER_GAIN
-    audio = (buffer * conf.PLAYER_INT16_SCALE).astype(np.int16)
-    play_obj = sa.play_buffer(audio, 1, 2, sample_rate)
-    play_obj.wait_done()
+    # sounddevice 接受 float32（-1~1），直接播放；blocking=True 等待播放完成，避免 simpleaudio 的 SIGSEGV
+    buffer = buffer.astype(np.float32)
+    sd.play(buffer, samplerate=sample_rate, blocking=True)
