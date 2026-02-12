@@ -14,7 +14,7 @@ COMPOSE_COUNTERPOINT_VELOCITY_RATIO = 0.15
 # 旋律表：轨迹→key→查表得到主旋律
 # -----------------------------------------------------------------------------
 MELODY_TABLE_PATH = 'melody_table.json'
-MELODY_KEY = '1'
+MELODY_KEY = '3'
 MELODY_KEY_LENGTH = 5
 MELODY_FALLBACK = True
 # -----------------------------------------------------------------------------

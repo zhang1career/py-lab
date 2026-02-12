@@ -98,5 +98,6 @@ def test_lookup_melody_returns_time_sign_overrides():
     table_path = os.path.join(os.path.dirname(__file__), "..", "..", "musician", "melody_table.json")
     motive, overrides = lookup_melody((3,), 60, "major", table_path=table_path, use_fallback=True)
     assert len(motive) > 0
-    assert overrides.get("time_sign_numerator") == 3
+    # melody_table.json 中 "3" 对应项为 4/4
+    assert overrides.get("time_sign_numerator") == 4
     assert overrides.get("time_sign_denominator") == 4

@@ -4,6 +4,7 @@
 """
 import json
 import os
+import random
 from typing import Any, List, Optional, Tuple, Union
 
 from . import conf
@@ -91,9 +92,8 @@ def _key_root_to_midi(note_name: str, octave: int = 4) -> int:
 
 def load_melody_table(path: Optional[str] = None) -> dict:
     """
-    从 JSON 文件加载旋律表。key 为前缀字符串。
-    value 为对象：{"notes": [...], "key_root": 可选(a～g/a#～g#), "KEY_MODE"/"key_mode": 可选}；
-    key_root 转为 MIDI 根音（如 c→60），有则覆盖 conf 的调性。
+    从 JSON 文件加载旋律表。表为树形：根与中间层为对象，key 为音级 "1"～"7"；
+    叶子为旋律数组（多个候选）；查表按 key 序列沿树走最长前缀，在叶子数组中任选一条。
     """
     p = path or getattr(conf, "MELODY_TABLE_PATH", None)
     if not p:
@@ -186,6 +186,49 @@ def _fallback_motive(root_midi: int, mode: str) -> Motive:
     )
 
 
+def _collect_all_entries(node: Union[dict, list]) -> List[dict]:
+    """
+    从树节点递归收集所有子孙叶节点中的旋律表项（含 "notes" 的 dict）。
+    用于当索引未到达叶节点时，汇总其下全部旋律再随机选取。
+    """
+    out: List[dict] = []
+    if isinstance(node, list):
+        for item in node:
+            if isinstance(item, dict) and "notes" in item:
+                out.append(item)
+        return out
+    if isinstance(node, dict):
+        for child in node.values():
+            out.extend(_collect_all_entries(child))
+        return out
+    return out
+
+
+def _lookup_tree(table: dict, key_tuple: Tuple[int, ...]) -> Optional[dict]:
+    """
+    沿树按 key 序列走最长前缀；到达叶子（数组）时任选一条旋律对象返回。
+    若停在中间节点（未到叶节点），则收集该节点下全部子孙旋律，再随机返回一条。
+    表结构：节点为 dict 且键为 "1"～"7" 则继续向下，节点为 list 则为叶子（旋律数组）。
+    """
+    node: Union[dict, list, None] = table
+    for d in key_tuple:
+        if not isinstance(node, dict):
+            break
+        k = str(d)
+        if k not in node:
+            break
+        node = node[k]
+    if isinstance(node, list) and len(node) > 0:
+        entry = random.choice(node)
+        if isinstance(entry, dict) and "notes" in entry:
+            return entry
+    if isinstance(node, dict):
+        candidates = _collect_all_entries(node)
+        if candidates:
+            return random.choice(candidates)
+    return None
+
+
 def lookup_melody(
     key: Union[Tuple[int, ...], List[int], str],
     root_midi: int,
@@ -194,8 +237,8 @@ def lookup_melody(
     use_fallback: bool = True,
 ) -> Tuple[Motive, dict]:
     """
-    按 key（音级序列或字符串）最长前缀查表，返回 (Motive, overrides)。
-    overrides 为 dict，可能含 time_sign_numerator、time_sign_denominator、bpm（仅当旋律表项有值时）。
+    按 key（音级序列或字符串）在树形表中做最长前缀查表，返回 (Motive, overrides)。
+    叶子为旋律数组，从中取一条使用。overrides 可能含 time_sign_numerator、time_sign_denominator、bpm。
     若无匹配则 use_fallback 时返回默认旋律，否则返回 ([], {})。
     """
     if isinstance(key, str):
@@ -203,20 +246,21 @@ def lookup_melody(
     else:
         key_tuple = tuple(key)
     table = load_melody_table(table_path)
-    # 最长前缀：从全长到 1
-    for length in range(len(key_tuple), 0, -1):
-        prefix = key_tuple[:length]
-        k = key_to_string(prefix)
-        if k in table:
-            raw = table[k]
-            notes_list, resolved_root_midi, resolved_mode, overrides = _normalize_table_value(
-                raw, root_midi, mode
+    if not table:
+        if use_fallback:
+            return _fallback_motive(root_midi, mode), {}
+        return [], {}
+    # 树形最长前缀：沿 key 序列向下走，首次到达叶子（数组）即用该叶子
+    raw = _lookup_tree(table, key_tuple)
+    if raw is not None:
+        notes_list, resolved_root_midi, resolved_mode, overrides = _normalize_table_value(
+            raw, root_midi, mode
+        )
+        if notes_list:
+            motive = _notes_from_table_value(
+                notes_list, resolved_root_midi, resolved_mode
             )
-            if notes_list:
-                motive = _notes_from_table_value(
-                    notes_list, resolved_root_midi, resolved_mode
-                )
-                return motive, overrides
+            return motive, overrides
     if use_fallback:
         return _fallback_motive(root_midi, mode), {}
     return [], {}

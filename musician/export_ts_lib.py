@@ -308,7 +308,10 @@ export type MelodyEntry = {
 };
 
 export type MelodyOverrides = { time_sign_numerator?: number; time_sign_denominator?: number; bpm?: number };
-export type MelodyTable = Record<string, MelodyEntry>;
+/** Tree: key 1–7 → leaf = MelodyEntry[] (candidates), inner = MelodyTable (next level). */
+export interface MelodyTable {
+  [key: string]: MelodyEntry[] | MelodyTable;
+}
 
 const KEY_ROOT_SEMITONE: Record<string, number> = {
   c: 0, "c#": 1, d: 2, "d#": 3, e: 4, f: 5, "f#": 6,
@@ -324,22 +327,18 @@ function keyRootToMidi(noteName: string, octave: number = 4): number {
 }
 
 const DEFAULT_MELODY_TABLE: MelodyTable = {
-  "1": { notes: [{ d: 1, dur: 0.5, vel: 0.85 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 1, dur: 1, vel: 0.8 }] },
-  "2": { notes: [{ d: 2, dur: 0.5, vel: 0.8 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] },
-  "3": { notes: [{ d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 1, dur: 0.5, vel: 0.8 }, { d: 3, dur: 1, vel: 0.8 }], time_sign_numerator: 3, time_sign_denominator: 4 },
-  "4": { notes: [{ d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 1, vel: 0.8 }] },
-  "5": { notes: [{ d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 3, dur: 1, vel: 0.8 }] },
-  "6": { notes: [{ d: 6, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 4, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] },
-  "7": { KEY_MODE: "minor", notes: [{ d: 7, dur: 0.5, vel: 0.8 }, { d: 6, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] },
+  "1": [{ notes: [{ d: 1, dur: 0.5, vel: 0.85 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 1, dur: 1, vel: 0.8 }] }],
+  "2": [{ notes: [{ d: 2, dur: 0.5, vel: 0.8 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] }],
+  "3": [{ notes: [{ d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 1, dur: 0.5, vel: 0.8 }, { d: 3, dur: 1, vel: 0.8 }], time_sign_numerator: 3, time_sign_denominator: 4 }],
+  "4": [{ notes: [{ d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.75 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 5, dur: 1, vel: 0.8 }] }],
+  "5": [{ notes: [{ d: 5, dur: 0.5, vel: 0.8 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 4, dur: 0.5, vel: 0.8 }, { d: 3, dur: 1, vel: 0.8 }] }],
+  "6": [{ notes: [{ d: 6, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.8 }, { d: 4, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] }],
+  "7": [{ KEY_MODE: "minor", notes: [{ d: 7, dur: 0.5, vel: 0.8 }, { d: 6, dur: 0.5, vel: 0.8 }, { d: 5, dur: 0.5, vel: 0.75 }, { d: 3, dur: 0.5, vel: 0.8 }, { d: 1, dur: 1, vel: 0.85 }] }],
 };
 
 /** Parse melody_table.json at runtime; use result as params.MELODY_TABLE in trajectoryOrKeyToMotive / trajectoryToScore. */
 export function parseMelodyTableFromJson(jsonString: string): MelodyTable {
   return JSON.parse(jsonString) as MelodyTable;
-}
-
-function keyToString(key: number[]): string {
-  return key.join(",");
 }
 
 function normalizeTableValue(raw: MelodyEntry | undefined, defaultRootMidi: number, defaultMode: string): [MelodyEntry["notes"], number, string, MelodyOverrides] {
@@ -391,7 +390,43 @@ function fallbackMotive(rootMidi: number, mode: string): Note[] {
   );
 }
 
-/** Longest-prefix lookup in melody table; useFallback when no match. Returns [notes, overrides]. */
+/** Recursively collect all MelodyEntry from a tree node (leaf array or inner MelodyTable). Used when key stops at inner node. */
+function collectAllEntries(node: MelodyEntry[] | MelodyTable): MelodyEntry[] {
+  const out: MelodyEntry[] = [];
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      if (item && Array.isArray(item.notes)) out.push(item);
+    }
+    return out;
+  }
+  for (const child of Object.values(node)) {
+    out.push(...collectAllEntries(child as MelodyEntry[] | MelodyTable));
+  }
+  return out;
+}
+
+/** Tree longest-prefix lookup: follow key sequence into tree; leaf = array of MelodyEntry, pick one at random. If we stop at an inner node, collect all descendant melodies and pick one at random. */
+function lookupTree(tbl: MelodyTable, keyArr: number[]): MelodyEntry | undefined {
+  let node: MelodyEntry[] | MelodyTable = tbl;
+  for (const d of keyArr) {
+    if (Array.isArray(node)) break;
+    const k = String(d);
+    if (!(k in node)) break;
+    node = (node as MelodyTable)[k];
+  }
+  if (Array.isArray(node) && node.length > 0) {
+    const entry = node[Math.floor(Math.random() * node.length)] as MelodyEntry;
+    if (entry && Array.isArray(entry.notes)) return entry;
+  }
+  if (!Array.isArray(node) && typeof node === "object" && node !== null) {
+    const candidates = collectAllEntries(node as MelodyTable);
+    if (candidates.length > 0) {
+      return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+  }
+  return undefined;
+}
+
 export function lookupMelody(
   key: number[] | string,
   rootMidi: number,
@@ -401,10 +436,8 @@ export function lookupMelody(
 ): [Note[], MelodyOverrides] {
   const keyArr = typeof key === "string" ? key.split(",").map((x) => parseInt(x.trim(), 10)) : key;
   const tbl = table ?? DEFAULT_MELODY_TABLE;
-  for (let len = keyArr.length; len >= 1; len--) {
-    const prefix = keyArr.slice(0, len);
-    const k = keyToString(prefix);
-    const raw = tbl[k];
+  const raw = lookupTree(tbl, keyArr);
+  if (raw) {
     const [notesList, resolvedRootMidi, resolvedMode, overrides] = normalizeTableValue(raw, rootMidi, mode);
     if (notesList.length > 0) return [notesFromTableValue(notesList, resolvedRootMidi, resolvedMode), overrides];
   }
