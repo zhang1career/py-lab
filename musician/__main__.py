@@ -345,6 +345,8 @@ seed = (time.time_ns() % (2**32)) ^ (os.getpid() % (2**32))
 rng = random.Random(seed)
 transpose = rng.randint(conf.DEMO_TRANSPOSE_MIN, conf.DEMO_TRANSPOSE_MAX)
 bpm = rng.randint(conf.DEMO_BPM_MIN, conf.DEMO_BPM_MAX)
+if "bpm" in overrides:
+    bpm = overrides["bpm"]
 motive = [Note(pitch=max(0, min(127, n.pitch + transpose)), duration=n.duration, velocity=n.velocity, start=n.start) for n in motive]
 compose_kw = {
     "bpm": bpm,
@@ -737,6 +739,8 @@ def main() -> None:
                 )
                 if "time_sign_numerator" in overrides and "time_sign_denominator" in overrides:
                     compose_kw["time_signature"] = (overrides["time_sign_numerator"], overrides["time_sign_denominator"])
+                if "bpm" in overrides:
+                    compose_kw["bpm"] = overrides["bpm"]
                 score = compose(motive, **compose_kw)
                 path = os.path.join(os.getcwd(), "musician_export.mid")
                 export_score_to_midi(score, path)

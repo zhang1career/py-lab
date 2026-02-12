@@ -32,6 +32,7 @@
     ]
   },
   "3": {
+    "bpm": 150,
     "time_sign_numerator": 4,
     "time_sign_denominator": 4,
     "notes": [

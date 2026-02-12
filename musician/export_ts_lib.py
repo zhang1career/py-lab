@@ -303,9 +303,11 @@ export type MelodyEntry = {
   /** Optional per-melody time signature override (replaces TIME_SIGNATURE_* / BEATS_PER_BAR when both present). */
   time_sign_numerator?: number;
   time_sign_denominator?: number;
+  /** Optional per-melody BPM override (overrides COMPOSE_DEFAULT_BPM at runtime). */
+  bpm?: number;
 };
 
-export type MelodyOverrides = { time_sign_numerator?: number; time_sign_denominator?: number };
+export type MelodyOverrides = { time_sign_numerator?: number; time_sign_denominator?: number; bpm?: number };
 export type MelodyTable = Record<string, MelodyEntry>;
 
 const KEY_ROOT_SEMITONE: Record<string, number> = {
@@ -359,6 +361,10 @@ function normalizeTableValue(raw: MelodyEntry | undefined, defaultRootMidi: numb
   if (num != null && denom != null && num > 0 && denom > 0) {
     overrides.time_sign_numerator = num;
     overrides.time_sign_denominator = denom;
+  }
+  const bpmVal = raw.bpm;
+  if (bpmVal != null && typeof bpmVal === "number" && bpmVal > 0) {
+    overrides.bpm = bpmVal;
   }
   return [raw.notes, rootMidi, mode, overrides];
 }
@@ -799,6 +805,7 @@ export function trajectoryToScore(
     ...(overrides.time_sign_numerator != null && overrides.time_sign_denominator != null
       ? { TIME_SIGNATURE_NUMERATOR: overrides.time_sign_numerator, TIME_SIGNATURE_DENOMINATOR: overrides.time_sign_denominator } as Params
       : {}),
+    ...(overrides.bpm != null ? { COMPOSE_DEFAULT_BPM: overrides.bpm } as Params : {}),
   };
   return compose(motive, mergedParams);
 }

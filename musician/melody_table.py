@@ -145,6 +145,15 @@ def _normalize_table_value(
                 overrides["time_sign_denominator"] = d
         except (TypeError, ValueError):
             pass
+    # 可选 BPM 覆盖：旋律表项有 bpm 时在运行时覆盖 COMPOSE_DEFAULT_BPM
+    bpm_val = raw.get("bpm")
+    if bpm_val is not None:
+        try:
+            b = float(bpm_val) if not isinstance(bpm_val, (int, float)) else bpm_val
+            if b > 0:
+                overrides["bpm"] = b
+        except (TypeError, ValueError):
+            pass
     return notes_list, root_midi, mode, overrides
 
 
@@ -186,7 +195,7 @@ def lookup_melody(
 ) -> Tuple[Motive, dict]:
     """
     按 key（音级序列或字符串）最长前缀查表，返回 (Motive, overrides)。
-    overrides 为 dict，可能含 time_sign_numerator、time_sign_denominator（仅当旋律表项有值时）。
+    overrides 为 dict，可能含 time_sign_numerator、time_sign_denominator、bpm（仅当旋律表项有值时）。
     若无匹配则 use_fallback 时返回默认旋律，否则返回 ([], {})。
     """
     if isinstance(key, str):
